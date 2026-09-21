@@ -579,6 +579,9 @@ class WsManager:
             friendly_name=self.config.device.name,
             session_uuid=self._session_uuid,
             max_audio_quality=self._max_audio_quality,
+            supports_volume_control=not (
+                self.config.backend.type == "dlna" and self.config.backend.dlna.fixed_volume
+            ),
             is_active=is_active,
             reason=(
                 JoinSessionReason.CONTROLLER_REQUEST

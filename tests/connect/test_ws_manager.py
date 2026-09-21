@@ -507,6 +507,25 @@ async def _send_report(manager: WsManager) -> bool:
 
 
 class TestSessionOwnership:
+    @pytest.mark.parametrize(
+        ("backend_type", "fixed_volume", "expected"),
+        [("dlna", True, 1), ("dlna", False, 2), ("local", True, 2)],
+    )
+    async def test_join_volume_capability(
+        self, config, valid_tokens, backend_type, fixed_volume, expected
+    ):
+        config.backend.type = backend_type
+        config.backend.dlna.fixed_volume = fixed_volume
+        manager = WsManager(config)
+        manager.set_tokens(valid_tokens, activate=True)
+        manager._ws = AsyncMock()
+        await manager._send_join_session()
+        assert _last_join(manager).deviceInfo.capabilities.volumeRemoteControl == expected
+
+        # Reconnects must preserve the same capability.
+        await manager._send_join_session()
+        assert _last_join(manager).deviceInfo.capabilities.volumeRemoteControl == expected
+
     async def test_three_speaker_refresh_preserves_selected_owner(self, config, valid_tokens):
         managers = [WsManager(config) for _ in range(3)]
         for manager in managers:

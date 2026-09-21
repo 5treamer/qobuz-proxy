@@ -264,6 +264,7 @@ class ProtocolCodec:
         initial_state: Optional[common_pb2.RendererState] = None,
         max_audio_quality: int = 27,
         *,
+        supports_volume_control: bool = True,
         is_active: bool = False,
         reason: JoinSessionReason = JoinSessionReason.RECONNECTION,
     ) -> bytes:
@@ -276,6 +277,7 @@ class ProtocolCodec:
             session_uuid: 16-byte session UUID to join
             initial_state: Optional initial renderer state
             max_audio_quality: Max quality ID (5=MP3, 6=CD, 7=Hi-Res 96k, 27=Hi-Res 192k)
+            supports_volume_control: Whether the app may control device volume.
             is_active: Request activation or restore this renderer's session ownership.
             reason: Distinguish explicit selection from transport reconnection.
 
@@ -296,7 +298,7 @@ class ProtocolCodec:
         caps = common_pb2.DeviceCapabilities()
         caps.minAudioQuality = 1
         caps.maxAudioQuality = proto_quality
-        caps.volumeRemoteControl = 2  # CONTROLLER
+        caps.volumeRemoteControl = 2 if supports_volume_control else 1  # CONTROLLER / DEVICE
         device_info.capabilities.CopyFrom(caps)
 
         # Build JoinSession message
