@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,7 +10,7 @@ import websockets
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from qobuz_proxy.backends.dlna.backend import DLNABackend
+from qobuz_proxy.backends.dlna.backend import DLNABackend, _source_label
 from qobuz_proxy.backends.dlna.client import DLNAClient
 from qobuz_proxy.backends.types import BackendTrackMetadata, PlaybackState
 from qobuz_proxy.config import Config, SpeakerConfig
@@ -421,3 +422,37 @@ async def test_inflight_uri_read_cannot_revoke_a_new_transport_load(rig):
     finish.set()
     assert not await check
     assert manager.is_renderer_active
+
+
+async def test_source_mismatch_logs_track_replacement_context(rig, caplog):
+    backend, client, _, _, _ = rig
+    client.get_track_uri.return_value = QOBUZ_URI
+    caplog.set_level(logging.INFO, logger="qobuz_proxy.backends.dlna.backend")
+    await backend.stop(next_track_id="789")
+
+    # Model a renderer reporting the formerly armed track after Stop. These
+    # diagnostics must distinguish this case from a foreign Spotify/AirPlay URI.
+    client.get_track_uri.return_value = NEXT_URI
+    await backend.check_external_playback()
+    assert "replacement_track_id=789" in caplog.text
+    assert "cleared_next=http://proxy/audio/456_2.flac" in caplog.text
+    assert "observed=http://proxy/audio/456_2.flac" in caplog.text
+    assert "expected=http://proxy/audio/123.flac" in caplog.text
+    assert "cached_state=STOPPED" in caplog.text
+    assert "last_successful_stop_age_s=None" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "https://user:secret@cdn.example/private-id?token=secret#secret",
+        "http://user:secret@proxy/audio/123.flac?token=secret",
+        "x-sonos-spotify:secret",
+        "http://[invalid-secret",
+    ],
+)
+def test_source_diagnostics_do_not_expose_credentials_or_opaque_ids(uri):
+    label = _source_label(uri)
+    assert "secret" not in label
+    assert "private-id" not in label
+    assert "sha256=" in label

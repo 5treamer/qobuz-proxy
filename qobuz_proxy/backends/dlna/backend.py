@@ -5,9 +5,12 @@ Implements AudioBackend interface for DLNA/UPnP renderers.
 """
 
 import asyncio
+import hashlib
 import logging
+import re
 import time
 from typing import Awaitable, Callable, Optional, TYPE_CHECKING
+from urllib.parse import urlsplit
 
 from qobuz_proxy.backends.base import AudioBackend
 from qobuz_proxy.backends.types import (
@@ -39,6 +42,22 @@ PLAYBACK_START_GRACE_PERIOD_SECONDS = 5.0
 
 # Class-level capability cache (shared across instances)
 _capability_cache = CapabilityCache()
+
+
+def _source_label(uri: Optional[str]) -> str:
+    """Identify sources without logging credentials, signed queries, or opaque IDs."""
+    if not uri:
+        return "none"
+    fingerprint = hashlib.sha256(uri.encode()).hexdigest()[:12]
+    try:
+        parsed = urlsplit(uri)
+        # Our audio paths contain only track IDs and optional generation numbers.
+        path = (
+            parsed.path if re.fullmatch(r"/audio/\d+(?:_\d+)?\.(?:flac|mp3)", parsed.path) else ""
+        )
+        return f"{parsed.scheme}://{parsed.hostname or ''}{path} [sha256={fingerprint}]"
+    except ValueError:
+        return f"unparseable [sha256={fingerprint}]"
 
 
 class DLNABackend(AudioBackend):
@@ -104,6 +123,7 @@ class DLNABackend(AudioBackend):
         self._is_sonos: bool = False
         self._external_playback = False
         self._starting_playback = False
+        self._last_stop_at: Optional[float] = None
         self._on_external_playback: Optional[Callable[[], Awaitable[None]]] = None
 
     def on_external_playback(self, callback: Callable[[], Awaitable[None]]) -> None:
@@ -137,6 +157,7 @@ class DLNABackend(AudioBackend):
         ):
             return False
         expected = self._current_proxy_url
+        armed_at_read = self._next_track_proxy_url
         current_uri = (
             await self._client.get_track_uri()
             if self._is_sonos
@@ -155,6 +176,19 @@ class DLNABackend(AudioBackend):
         # Renderers can briefly report the old source while loading our URI.
         if time.monotonic() - self._playback_started_at < PLAYBACK_START_GRACE_PERIOD_SECONDS:
             return False
+        logger.warning(
+            "[%s] Source mismatch: observed=%s expected=%s armed_at_read=%s armed_now=%s "
+            "cached_state=%s last_successful_stop_age_s=%s",
+            self.name,
+            _source_label(current_uri),
+            _source_label(expected),
+            _source_label(armed_at_read),
+            _source_label(self._next_track_proxy_url),
+            self._state.name,
+            round(time.monotonic() - self._last_stop_at, 3)
+            if self._last_stop_at is not None
+            else None,
+        )
         self._external_playback = True
         self._next_track_proxy_url = None
         self._next_track_metadata = None
@@ -408,12 +442,21 @@ class DLNABackend(AudioBackend):
     async def stop(self, *, next_track_id: Optional[str] = None) -> None:
         """Stop playback."""
         owns_transport = await self._owns_transport()
+        outgoing_next = self._next_track_proxy_url
         # Clear gapless state
         self._next_track_proxy_url = None
         self._next_track_metadata = None
         self._next_track_queue_nr = None
 
         if self._client and owns_transport and await self._client.stop():
+            self._last_stop_at = time.monotonic()
+            logger.info(
+                "[%s] Qobuz stopped transport: current=%s cleared_next=%s replacement_track_id=%s",
+                self.name,
+                _source_label(self._current_proxy_url),
+                _source_label(outgoing_next),
+                next_track_id,
+            )
             self._position_ms = 0
             self._playback_started_at = 0.0  # Clear grace period
             self._notify_state_change(PlaybackState.STOPPED)
