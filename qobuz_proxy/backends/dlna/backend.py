@@ -121,8 +121,10 @@ class DLNABackend(AudioBackend):
 
         # Sonos queue-based playback (for Sonos app metadata display)
         self._is_sonos: bool = False
+        self._sonos_queue_head_url: Optional[str] = None
         self._external_playback = False
         self._starting_playback = False
+        self._stopping_playback = False
         self._last_stop_at: Optional[float] = None
         self._on_external_playback: Optional[Callable[[], Awaitable[None]]] = None
 
@@ -152,6 +154,7 @@ class DLNABackend(AudioBackend):
         if (
             self._external_playback
             or self._starting_playback
+            or self._stopping_playback
             or not self._client
             or not self._current_proxy_url
         ):
@@ -167,12 +170,36 @@ class DLNABackend(AudioBackend):
         if (
             self._external_playback
             or self._starting_playback
+            or self._stopping_playback
             or expected != self._current_proxy_url
             or not current_uri
         ):
             return False
         if current_uri in (self._current_proxy_url, self._next_track_proxy_url):
             return True
+        # Sonos Stop resets TrackURI to the first entry of our retained queue,
+        # even after gapless playback advanced to a later entry. Only accept
+        # that exact URI following our own successful stop, while still stopped.
+        if (
+            self._is_sonos
+            and self._last_stop_at is not None
+            and current_uri == self._sonos_queue_head_url
+        ):
+            transport = await self._client.get_transport_info()
+            if (
+                self._external_playback
+                or self._starting_playback
+                or self._stopping_playback
+                or expected != self._current_proxy_url
+                or self._last_stop_at is None
+                or current_uri != self._sonos_queue_head_url
+            ):
+                return False
+            if not transport:
+                return False
+            if transport == "STOPPED":
+                logger.debug("[%s] Sonos reported Qobuz queue head after Stop", self.name)
+                return True
         # Renderers can briefly report the old source while loading our URI.
         if time.monotonic() - self._playback_started_at < PLAYBACK_START_GRACE_PERIOD_SECONDS:
             return False
@@ -355,6 +382,7 @@ class DLNABackend(AudioBackend):
 
         if success:
             self._external_playback = False
+            self._last_stop_at = None
             self._position_ms = 0
             self._current_proxy_url = actual_url
             self._playback_started_at = time.monotonic()
@@ -409,6 +437,7 @@ class DLNABackend(AudioBackend):
     async def _play_via_queue(self, url: str, didl: str) -> bool:
         """Start playback using Sonos queue (shows metadata in Sonos app)."""
         assert self._client
+        self._sonos_queue_head_url = None
         if not await self._client.clear_queue():
             logger.warning("Failed to clear queue, falling back to transport URI")
             return await self._play_via_transport(url, didl)
@@ -418,6 +447,7 @@ class DLNABackend(AudioBackend):
             return await self._play_via_transport(url, didl)
 
         if await self._client.play_from_queue(0):
+            self._sonos_queue_head_url = url
             return True
 
         self._notify_playback_error("Failed to play from queue")
@@ -448,7 +478,14 @@ class DLNABackend(AudioBackend):
         self._next_track_metadata = None
         self._next_track_queue_nr = None
 
-        if self._client and owns_transport and await self._client.stop():
+        if not self._client or not owns_transport:
+            return
+        self._stopping_playback = True
+        try:
+            stopped = await self._client.stop()
+        finally:
+            self._stopping_playback = False
+        if stopped:
             self._last_stop_at = time.monotonic()
             logger.info(
                 "[%s] Qobuz stopped transport: current=%s cleared_next=%s replacement_track_id=%s",
@@ -696,6 +733,7 @@ class DLNABackend(AudioBackend):
                 # Their state changes must never trigger Qobuz auto-advance.
                 if (
                     self._starting_playback
+                    or self._stopping_playback
                     or not self._current_proxy_url
                     or await self.check_external_playback()
                 ):

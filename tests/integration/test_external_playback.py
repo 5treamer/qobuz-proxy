@@ -443,6 +443,79 @@ async def test_source_mismatch_logs_track_replacement_context(rig, caplog):
 
 
 @pytest.mark.parametrize(
+    ("after_stop", "transport", "stop_succeeds", "allowed"),
+    [
+        (QOBUZ_URI, "STOPPED", True, True),
+        (SPOTIFY_URI, "STOPPED", True, False),
+        (QOBUZ_URI, "PLAYING", True, False),
+        (QOBUZ_URI, "STOPPED", False, False),
+        ("http://proxy:7120/audio/999.flac", "STOPPED", True, False),
+    ],
+)
+async def test_replace_album_after_sonos_stop_resets_to_queue_head(
+    rig, after_stop, transport, stop_succeeds, allowed
+):
+    backend, client, _, manager, _ = rig
+    client.get_track_uri.return_value = QOBUZ_URI
+    first = BackendTrackMetadata(track_id="123", title="First", artist="Artist")
+    await backend.play(QOBUZ_URI, first)
+
+    # Several gapless transitions later, the first entry remains in Sonos's queue.
+    backend._current_proxy_url = NEXT_URI
+    backend._playback_started_at = 0
+    client.get_track_uri.return_value = NEXT_URI
+
+    async def stop():
+        client.get_track_uri.return_value = after_stop
+        client.get_transport_info.return_value = transport
+        return stop_succeeds
+
+    client.stop.side_effect = stop
+    await backend.stop(next_track_id="789")
+    client.play_from_queue.reset_mock()
+    replacement = BackendTrackMetadata(track_id="789", title="Replacement", artist="Artist")
+    if not allowed:
+        with pytest.raises(RuntimeError, match="External source"):
+            await backend.play("http://proxy:7120/audio/789.flac", replacement)
+        client.play_from_queue.assert_not_awaited()
+        assert not manager.is_renderer_active
+    else:
+        await backend.play("http://proxy:7120/audio/789.flac", replacement)
+        client.play_from_queue.assert_awaited_once_with(0)
+        assert manager.is_renderer_active
+        assert not backend._external_playback
+
+        # Loading the replacement retires the old queue head.
+        backend._playback_started_at = 0
+        client.get_track_uri.return_value = QOBUZ_URI
+        assert await backend.check_external_playback()
+
+
+async def test_source_poll_during_stop_does_not_relinquish_queue(rig):
+    backend, client, _, manager, _ = rig
+    client.get_track_uri.return_value = QOBUZ_URI
+    await backend.play(
+        QOBUZ_URI, BackendTrackMetadata(track_id="123", title="First", artist="Artist")
+    )
+    backend._current_proxy_url = NEXT_URI
+    backend._playback_started_at = 0
+    client.get_track_uri.return_value = NEXT_URI
+
+    async def stop():
+        # Sonos changes its reported URI before the Stop response reaches us.
+        client.get_track_uri.return_value = QOBUZ_URI
+        assert not await backend.check_external_playback()
+        assert manager.is_renderer_active
+        return True
+
+    client.stop.side_effect = stop
+    await backend.stop(next_track_id="789")
+    client.get_transport_info.return_value = "STOPPED"
+    assert await backend.can_apply_remote_state()
+    assert manager.is_renderer_active
+
+
+@pytest.mark.parametrize(
     "uri",
     [
         "https://user:secret@cdn.example/private-id?token=secret#secret",
