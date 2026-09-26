@@ -49,6 +49,11 @@ EARLY_STOP_MARGIN_MS = 15_000
 _capability_cache = CapabilityCache()
 
 
+def _proxy_key(url: str) -> str:
+    """Audio proxy registration key of one of our proxy URLs."""
+    return urlsplit(url).path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+
+
 def _source_label(uri: Optional[str]) -> str:
     """Identify sources without logging credentials, signed queries, or opaque IDs."""
     if not uri:
@@ -117,6 +122,9 @@ class DLNABackend(AudioBackend):
 
         # Audio proxy server for URL handling
         self._proxy_server: Optional["AudioProxyServer"] = None
+        # Proxy keys the audio proxy failed to serve -> True if the renderer got
+        # no audio at all, False if the stream was cut short.
+        self._delivery_failures: dict[str, bool] = {}
 
         # Device capabilities
         self._capabilities: Optional[DLNACapabilities] = None
@@ -253,7 +261,14 @@ class DLNABackend(AudioBackend):
             proxy: AudioProxyServer instance
         """
         self._proxy_server = proxy
+        proxy.set_delivery_failure_callback(self._on_delivery_failure)
         logger.info("Audio proxy server configured for DLNA backend")
+
+    def _on_delivery_failure(self, proxy_key: str, before_audio: bool) -> None:
+        """Remember a track the renderer could not get (fully) from the proxy."""
+        self._delivery_failures[proxy_key] = before_audio or self._delivery_failures.get(
+            proxy_key, False
+        )
 
     async def connect(self) -> bool:
         """Connect to DLNA device."""
@@ -383,6 +398,8 @@ class DLNABackend(AudioBackend):
                 content_type=content_type,
             )
             logger.debug(f"Using proxy URL: {actual_url}")
+        # Failures from an earlier attempt at this URL are not this play's.
+        self._delivery_failures.pop(_proxy_key(actual_url), None)
 
         # Build DIDL-Lite metadata
         didl = self._build_didl(actual_url, metadata, content_type)
@@ -675,6 +692,7 @@ class DLNABackend(AudioBackend):
                 proxy_key=proxy_key,
             )
             logger.debug(f"Gapless: registered next track proxy URL: {actual_url}")
+        self._delivery_failures.pop(_proxy_key(actual_url), None)
 
         # Build DIDL-Lite metadata
         didl = self._build_didl(actual_url, metadata, content_type)
@@ -797,6 +815,23 @@ class DLNABackend(AudioBackend):
                         self._notify_position_update(0)
                         continue
 
+                # The proxy could not get any audio for the current track from
+                # Qobuz (e.g. the CDN edge failed before the first byte). Some
+                # renderers then sit in PLAYING or TRANSITIONING forever, so
+                # don't wait for a stop that may never come: skip it.
+                current_key = _proxy_key(self._current_proxy_url or "")
+                if self._delivery_failures.get(current_key) is True:
+                    del self._delivery_failures[current_key]
+                    logger.warning(
+                        "[%s] Could not stream the current track to the renderer; "
+                        "skipping to the next track",
+                        self.name,
+                    )
+                    # Mark stopped so the renderer's own stop is not a second end.
+                    self._state = PlaybackState.STOPPED
+                    self._notify_track_ended()
+                    continue
+
                 # Detect state changes
                 if new_state != self._state:
                     logger.debug(f"State changed: {self._state} -> {new_state}")
@@ -845,7 +880,15 @@ class DLNABackend(AudioBackend):
                 logger.debug(f"State poll error: {e}")
 
     def _stopped_before_track_end(self) -> bool:
-        """Whether a stop landed well before the end of the track."""
+        """Whether a stop landed well before the end of a track that streamed fine.
+
+        A stream the proxy cut short ends early on the renderer too; that is
+        still the end of what could be played, so it counts as a track end.
+        """
+        if self._current_proxy_url and (
+            self._delivery_failures.pop(_proxy_key(self._current_proxy_url), None) is not None
+        ):
+            return False
         # Unknown duration or a renderer that never reported a position: keep
         # treating the stop as a track end rather than stall the queue.
         return (

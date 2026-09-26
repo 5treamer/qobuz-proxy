@@ -11,7 +11,7 @@ import socket
 import time
 import traceback
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 from aiohttp import web, ClientError, ClientSession, ClientTimeout
 
@@ -102,6 +102,7 @@ class AudioProxyServer:
         self._url_max_age = url_max_age
 
         self._tracks: Dict[str, RegisteredTrack] = {}
+        self._on_delivery_failure: Optional[Callable[[str, bool], None]] = None
         self._app: Optional[web.Application] = None
         self._runner: Optional[web.AppRunner] = None
         self._site: Optional[web.TCPSite] = None
@@ -186,6 +187,21 @@ class AudioProxyServer:
         logger.debug(f"Registered track {track_id} (key={key}) -> {proxy_url}")
         return proxy_url
 
+    def set_delivery_failure_callback(self, callback: Callable[[str, bool], None]) -> None:
+        """Register ``callback(proxy_key, before_audio)`` for streams we could not serve.
+
+        ``before_audio`` is True when the renderer got no audio at all (an error
+        response), False when the stream was cut short after audio was sent.
+        """
+        self._on_delivery_failure = callback
+
+    def _report_delivery_failure(self, proxy_key: str, before_audio: bool) -> None:
+        if self._on_delivery_failure:
+            try:
+                self._on_delivery_failure(proxy_key, before_audio)
+            except Exception as e:
+                logger.error(f"Delivery failure callback error: {e}")
+
     def unregister_track(self, track_id: str) -> None:
         """Remove a track from the registry."""
         if track_id in self._tracks:
@@ -222,6 +238,8 @@ class AudioProxyServer:
         if track.is_url_expired(self._url_max_age):
             logger.info(f"Refreshing expired URL for track {track.track_id}")
             if not await self._refresh_track_url(track, force=True):
+                if request.method != "HEAD":
+                    self._report_delivery_failure(proxy_key, True)
                 return web.Response(status=502, text="Failed to refresh streaming URL")
 
         # HEAD probes (Denon/HEOS send one before every GET) route here too via
@@ -232,7 +250,7 @@ class AudioProxyServer:
             return await self._handle_head_probe(track)
 
         # Forward request to Qobuz CDN
-        return await self._proxy_stream(request, track)
+        return await self._proxy_stream(request, track, proxy_key)
 
     async def _handle_head_probe(self, track: RegisteredTrack) -> web.Response:
         """Answer a HEAD probe from upstream headers, without a body transfer."""
@@ -257,6 +275,7 @@ class AudioProxyServer:
         self,
         request: web.Request,
         track: RegisteredTrack,
+        proxy_key: str,
     ) -> web.StreamResponse:
         """Proxy the audio stream from Qobuz CDN.
 
@@ -324,6 +343,7 @@ class AudioProxyServer:
                                 f"Upstream error for track {track.track_id}: "
                                 f"{upstream_response.status}"
                             )
+                            self._report_delivery_failure(proxy_key, response is None)
                             if response is None:
                                 return web.Response(
                                     status=502,
@@ -339,6 +359,7 @@ class AudioProxyServer:
                                 f"Upstream ignored resume Range for track {track.track_id}; "
                                 "aborting stream"
                             )
+                            self._report_delivery_failure(proxy_key, False)
                             assert response is not None
                             return response
 
@@ -407,6 +428,7 @@ class AudioProxyServer:
                         f"Upstream failed for track {track.track_id} after "
                         f"{MAX_UPSTREAM_RETRIES} retries: {type(e).__name__}: {e}"
                     )
+                    self._report_delivery_failure(proxy_key, response is None)
                     if response is None:
                         return web.Response(status=502, text=f"Upstream error: {e}")
                     self._log_stream_end(
@@ -437,6 +459,7 @@ class AudioProxyServer:
                 logger.error(f"Proxy error for track {track.track_id}: {type(e).__name__}: {e}")
                 logger.error(f"URL was: {track.qobuz_url[:100]}...")
                 logger.debug(f"Full traceback: {traceback.format_exc()}")
+                self._report_delivery_failure(proxy_key, response is None)
                 if response is not None:
                     return response
                 return web.Response(status=502, text=f"Proxy error: {e}")

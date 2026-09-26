@@ -5,6 +5,15 @@ Emulates just enough UPnP/DLNA (device description + SOAP control endpoints)
 for qobuz-proxy to connect, detect capabilities, and drive basic transport
 state. No audio is played; PLAYING state advances a fake position clock.
 
+--on-fetch-error makes Play fetch the start of the URI, as a real renderer
+does, and picks how the transport reacts when that fetch fails:
+
+  stop            go STOPPED (like upmpdcli + mpd)
+  stay-playing    keep reporting PLAYING with the position frozen at 0
+  transitioning   report TRANSITIONING indefinitely
+
+Without it, Play never fetches the URI.
+
 Profiles control what GetProtocolInfo advertises:
 
   gmediarender  FLAC with no rate/depth info (like gmrender-resurrect) —
@@ -25,10 +34,12 @@ Then point a speaker at it:
 """
 
 import argparse
+import asyncio
 import logging
 import time
+from typing import Optional
 
-from aiohttp import web
+from aiohttp import ClientSession, ClientTimeout, web
 
 logger = logging.getLogger("fake_renderer")
 
@@ -115,8 +126,10 @@ def _fmt_hms(seconds: float) -> str:
 
 
 class FakeRenderer:
-    def __init__(self, sink: str):
+    def __init__(self, sink: str, on_fetch_error: Optional[str] = None):
         self.sink = sink
+        self.on_fetch_error = on_fetch_error
+        self._fetch_task: Optional[asyncio.Task[None]] = None
         self.volume = 39
         self.mute = 0
         self.state = "STOPPED"
@@ -126,7 +139,7 @@ class FakeRenderer:
         self._position_base: float = 0.0
 
     def _position_seconds(self) -> float:
-        if self.state == "PLAYING":
+        if self.state == "PLAYING" and self._play_started:
             return self._position_base + (time.monotonic() - self._play_started)
         return self._position_base
 
@@ -166,12 +179,19 @@ class FakeRenderer:
         if action == "Play":
             self._play_started = time.monotonic()
             self.state = "PLAYING"
+            if self.on_fetch_error and self.uri:
+                if self._fetch_task:
+                    self._fetch_task.cancel()
+                self._fetch_task = asyncio.create_task(self._fetch(self.uri))
             return _soap_response(service, action, {})
         if action == "Pause":
             self._position_base = self._position_seconds()
             self.state = "PAUSED_PLAYBACK"
             return _soap_response(service, action, {})
         if action == "Stop":
+            if self._fetch_task:
+                self._fetch_task.cancel()
+                self._fetch_task = None
             self.state = "STOPPED"
             self._position_base = 0.0
             return _soap_response(service, action, {})
@@ -181,6 +201,22 @@ class FakeRenderer:
             self._position_base = parts[0] * 3600 + parts[1] * 60 + parts[2]
             self._play_started = time.monotonic()
             return _soap_response(service, action, {})
+        if action == "GetMediaInfo":
+            return _soap_response(
+                service,
+                action,
+                {
+                    "NrTracks": "1" if self.uri else "0",
+                    "MediaDuration": "0:04:00",
+                    "CurrentURI": _xml_escape(self.uri),
+                    "CurrentURIMetaData": "",
+                    "NextURI": _xml_escape(self.next_uri),
+                    "NextURIMetaData": "",
+                    "PlayMedium": "NETWORK",
+                    "RecordMedium": "NOT_IMPLEMENTED",
+                    "WriteStatus": "NOT_IMPLEMENTED",
+                },
+            )
         if action == "GetTransportInfo":
             return _soap_response(
                 service,
@@ -199,7 +235,7 @@ class FakeRenderer:
                 {
                     "Track": "1" if self.uri else "0",
                     "TrackDuration": "0:04:00",
-                    "TrackURI": self.uri,
+                    "TrackURI": _xml_escape(self.uri),
                     "RelTime": pos,
                     "AbsTime": pos,
                     "RelCount": "0",
@@ -209,6 +245,36 @@ class FakeRenderer:
 
         logger.warning("Unhandled SOAP action: %s", soap_action)
         return web.Response(status=500, text="Unhandled action")
+
+    async def _fetch(self, uri: str) -> None:
+        """Read the start of the stream; on failure, react as configured."""
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=60)) as session:
+                async with session.get(uri) as resp:
+                    if resp.status not in (200, 206):
+                        raise RuntimeError(f"HTTP {resp.status}")
+                    await resp.content.read(65536)
+            logger.info("Fetched start of %s", uri)
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning("Fetch of %s failed (%s); reacting with %s", uri, e, self.on_fetch_error)
+        if uri != self.uri:
+            return
+        if self.on_fetch_error == "stop":
+            self.state = "STOPPED"
+            self._position_base = 0.0
+        elif self.on_fetch_error == "stay-playing":
+            self._play_started = 0.0
+            self._position_base = 0.0
+        elif self.on_fetch_error == "transitioning":
+            self.state = "TRANSITIONING"
+            self._position_base = 0.0
+
+
+def _xml_escape(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _extract(xml_text: str, tag: str) -> str:
@@ -224,11 +290,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fake DLNA renderer for qobuz-proxy testing")
     parser.add_argument("--port", type=int, default=49494)
     parser.add_argument("--profile", choices=sorted(PROFILES), default="gmediarender")
+    parser.add_argument(
+        "--on-fetch-error", choices=["stop", "stay-playing", "transitioning"], default=None
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
-    renderer = FakeRenderer(sink=PROFILES[args.profile])
+    renderer = FakeRenderer(sink=PROFILES[args.profile], on_fetch_error=args.on_fetch_error)
     app = web.Application()
     app.router.add_get("/description.xml", renderer.handle_description)
     app.router.add_post("/upnp/control/avtransport", renderer.handle_soap)

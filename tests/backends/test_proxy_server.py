@@ -251,3 +251,58 @@ async def test_resumes_upstream_after_midstream_failure():
     resume = upstream.range_headers[1]
     assert resume is not None and resume.startswith("bytes=")
     assert int(resume.removeprefix("bytes=").split("-")[0]) > 0
+
+
+async def test_reports_delivery_failure_when_renderer_gets_no_audio():
+    """A 502 before any audio tells the backend the renderer has nothing to play."""
+    upstream = ExpiredUrlUpstream()
+    base_url = await upstream.start()
+
+    provider = MagicMock()
+    provider.get_streaming_url = AsyncMock(side_effect=RuntimeError("no URL"))
+
+    port = _free_port()
+    proxy = AudioProxyServer(url_provider=provider, host="127.0.0.1", port=port)
+    failures: list = []
+    proxy.set_delivery_failure_callback(
+        lambda key, before_audio: failures.append((key, before_audio))
+    )
+    await proxy.start()
+    try:
+        proxy.register_track("42", f"{base_url}?token=stale", "audio/flac", proxy_key="42_3")
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(f"http://127.0.0.1:{port}/audio/42_3.flac") as resp:
+                assert resp.status == 502
+    finally:
+        await proxy.stop()
+        await upstream.stop()
+
+    assert failures == [("42_3", True)]
+
+
+async def test_recovered_midstream_failure_is_not_a_delivery_failure():
+    upstream = FlakyUpstream()
+    upstream_url = await upstream.start()
+
+    provider = MagicMock()
+    provider.get_streaming_url = AsyncMock(return_value=upstream_url)
+
+    port = _free_port()
+    proxy = AudioProxyServer(url_provider=provider, host="127.0.0.1", port=port)
+    failures: list = []
+    proxy.set_delivery_failure_callback(
+        lambda key, before_audio: failures.append((key, before_audio))
+    )
+    await proxy.start()
+    try:
+        proxy.register_track("42", upstream_url, "audio/flac")
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(f"http://127.0.0.1:{port}/audio/42.flac") as resp:
+                assert await resp.read() == PAYLOAD
+    finally:
+        await proxy.stop()
+        await upstream.stop()
+
+    assert failures == []
