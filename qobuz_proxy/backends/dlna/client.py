@@ -382,7 +382,8 @@ class DLNAClient:
         Get current media info including CurrentURI.
 
         Returns:
-            CurrentURI string, or None if unavailable
+            CurrentURI string ("" when the renderer has nothing loaded), or
+            None if the request failed
         """
         if not self.device_info:
             return None
@@ -395,7 +396,7 @@ class DLNAClient:
         )
 
         if response:
-            return self._parse_xml_value_exact(response, "CurrentURI")
+            return self._parse_xml_value_exact(response, "CurrentURI") or ""
         return None
 
     # =========================================================================

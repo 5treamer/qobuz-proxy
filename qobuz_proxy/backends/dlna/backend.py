@@ -166,9 +166,26 @@ class DLNABackend(AudioBackend):
 
     async def can_apply_remote_state(self) -> bool:
         """Require source confirmation for snapshots of an already loaded transport."""
-        if self._current_proxy_url:
-            return await self._owns_transport()
-        return not self._external_playback
+        if not self._current_proxy_url:
+            return not self._external_playback
+        if await self._owns_transport():
+            return True
+        # upmpdcli 1.9+ clears CurrentURI when stopped. An idle renderer with
+        # nothing loaded belongs to no other source, so the app may load onto it
+        # again; refusing left the speaker dead after switching away and back
+        # (GitHub #35). An empty URI while playing may be a device-internal
+        # source (AirPlay, line-in), so that still fails closed.
+        if (
+            self._is_sonos
+            or self._external_playback
+            or self._starting_playback
+            or self._stopping_playback
+            or not self._client
+        ):
+            return False
+        if await self._client.get_media_info() != "":
+            return False
+        return await self._client.get_transport_info() in ("STOPPED", "NO_MEDIA_PRESENT")
 
     async def _owns_transport(self) -> bool:
         """Only control the current or armed Qobuz track; unknown sources fail closed."""

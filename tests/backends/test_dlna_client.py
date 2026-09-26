@@ -109,3 +109,35 @@ class TestRemoveTrackFromQueue:
         client._soap_action = AsyncMock(return_value=None)  # type: ignore[method-assign]
 
         assert await client.remove_track_from_queue(5) is False
+
+
+MEDIA_INFO_RESPONSE = """<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <u:GetMediaInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+      <NrTracks>1</NrTracks>
+      <CurrentURI>{uri}</CurrentURI>
+      <NextURI></NextURI>
+    </u:GetMediaInfoResponse>
+  </s:Body>
+</s:Envelope>"""
+
+
+class TestGetMediaInfo:
+    async def test_returns_current_uri(self):
+        client = _make_client()
+        client._soap_action = AsyncMock(  # type: ignore[method-assign]
+            return_value=MEDIA_INFO_RESPONSE.format(uri="http://proxy/audio/1.flac")
+        )
+        assert await client.get_media_info() == "http://proxy/audio/1.flac"
+
+    async def test_empty_uri_is_distinct_from_a_failed_request(self):
+        """upmpdcli 1.9 reports an empty CurrentURI once stopped."""
+        client = _make_client()
+        client._soap_action = AsyncMock(  # type: ignore[method-assign]
+            return_value=MEDIA_INFO_RESPONSE.format(uri="")
+        )
+        assert await client.get_media_info() == ""
+
+        client._soap_action = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        assert await client.get_media_info() is None

@@ -529,3 +529,24 @@ def test_source_diagnostics_do_not_expose_credentials_or_opaque_ids(uri):
     assert "secret" not in label
     assert "private-id" not in label
     assert "sha256=" in label
+
+
+@pytest.mark.parametrize(
+    ("uri", "transport", "allowed"),
+    [
+        ("", "STOPPED", True),
+        ("", "NO_MEDIA_PRESENT", True),
+        ("", "PLAYING", False),  # device-internal source (AirPlay, line-in)
+        (None, "STOPPED", False),  # read failed: fail closed
+        (SPOTIFY_URI, "STOPPED", False),
+    ],
+)
+async def test_idle_renderer_without_a_uri_accepts_qobuz_again(rig, uri, transport, allowed):
+    """GitHub #35: upmpdcli 1.9 clears CurrentURI when Qobuz stops it on
+    deactivation, and the app's commands after switching back were refused."""
+    backend, client, _, _, _ = rig
+    backend._is_sonos = False
+    backend._next_track_proxy_url = None
+    client.get_media_info.return_value = uri
+    client.get_transport_info.return_value = transport
+    assert await backend.can_apply_remote_state() is allowed
