@@ -213,3 +213,27 @@ class TestStopDuringLoad:
 
         assert backend.played == []
         assert player.state == PlaybackState.STOPPED
+
+    async def test_next_only_set_state_during_load_keeps_pending_play(self) -> None:
+        """GitHub #33: after a manual skip the server sends a SET_STATE that only
+        updates the next item while the new track is still loading. It carries
+        no playback intent, so the skip must still start playing."""
+        player, backend = _make_player()
+
+        async def slow_url(track_id: str) -> str:
+            await asyncio.sleep(0.05)
+            return f"http://test/{track_id}"
+
+        player.metadata.get_streaming_url = MagicMock(side_effect=slow_url)
+
+        apply = asyncio.create_task(
+            player.apply_remote_state(track_id="7", queue_item_id=1, position_ms=0, playing_state=2)
+        )
+        await asyncio.sleep(0.01)  # load in progress, holding the lock
+        await player.apply_remote_state(
+            track_id=None, queue_item_id=None, position_ms=None, playing_state=None
+        )
+        await apply
+
+        assert backend.played == ["7"]
+        assert player.state == PlaybackState.PLAYING

@@ -477,6 +477,13 @@ class QobuzPlayer:
             context_uuid: Album/playlist context bytes for the target track, used
                 for play reporting (listening history / scrobbles).
         """
+        # A SET_STATE that only updates the queue version or next item carries
+        # no playback intent. It must not supersede a track change still being
+        # loaded: the server's reply to a state report that crossed a manual
+        # skip is one of these, and taking a generation for it cancelled the
+        # skip's pending play, leaving the renderer stopped (GitHub #33).
+        if track_id is None and position_ms is None and playing_state is None:
+            return
         # A replay of the failed current item is not a new playback intent.
         # In particular it must not invalidate a NEXT waiting for the send lock.
         pending = self._skip_pending_track
