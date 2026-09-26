@@ -40,6 +40,11 @@ STATE_POLL_INTERVAL_SECONDS = 2.0
 # This prevents false track-ended events while the device is loading
 PLAYBACK_START_GRACE_PERIOD_SECONDS = 5.0
 
+# A stop with more than this much of the track left is not a natural track end
+# (another controller or the device's own buttons stopped it). Covers the poll
+# interval plus renderers whose reported position lags a little.
+EARLY_STOP_MARGIN_MS = 15_000
+
 # Class-level capability cache (shared across instances)
 _capability_cache = CapabilityCache()
 
@@ -58,6 +63,11 @@ def _source_label(uri: Optional[str]) -> str:
         return f"{parsed.scheme}://{parsed.hostname or ''}{path} [sha256={fingerprint}]"
     except ValueError:
         return f"unparseable [sha256={fingerprint}]"
+
+
+def _format_ms(ms: int) -> str:
+    seconds = ms // 1000
+    return f"{seconds // 60}:{seconds % 60:02d}"
 
 
 class DLNABackend(AudioBackend):
@@ -100,6 +110,9 @@ class DLNABackend(AudioBackend):
 
         self._current_metadata: Optional[BackendTrackMetadata] = None
         self._position_ms: int = 0
+        # Furthest position reached on the current track. Positions read after
+        # a stop drop back to 0, so a stop is judged against this instead.
+        self._furthest_position_ms: int = 0
         self._duration_ms: int = 0
 
         # Audio proxy server for URL handling
@@ -384,6 +397,7 @@ class DLNABackend(AudioBackend):
             self._external_playback = False
             self._last_stop_at = None
             self._position_ms = 0
+            self._furthest_position_ms = 0
             self._current_proxy_url = actual_url
             self._playback_started_at = time.monotonic()
             self._notify_state_change(PlaybackState.PLAYING)
@@ -495,6 +509,7 @@ class DLNABackend(AudioBackend):
                 next_track_id,
             )
             self._position_ms = 0
+            self._furthest_position_ms = 0
             self._playback_started_at = 0.0  # Clear grace period
             self._notify_state_change(PlaybackState.STOPPED)
 
@@ -508,6 +523,7 @@ class DLNABackend(AudioBackend):
             raise RuntimeError("Cannot seek: renderer is not playing the Qobuz track")
         if self._client and await self._client.seek(position_ms):
             self._position_ms = position_ms
+            self._furthest_position_ms = position_ms
             self._notify_position_update(position_ms)
 
     async def get_position(self) -> int:
@@ -516,6 +532,7 @@ class DLNABackend(AudioBackend):
             pos = await self._client.get_position_info()
             if pos is not None:
                 self._position_ms = pos
+                self._furthest_position_ms = max(self._furthest_position_ms, pos)
                 logger.debug(f"DLNA position: {pos}ms")
             else:
                 logger.debug("DLNA position: None returned")
@@ -768,6 +785,7 @@ class DLNABackend(AudioBackend):
                         if self._next_track_metadata:
                             self._duration_ms = self._next_track_metadata.duration_ms
                         self._position_ms = 0
+                        self._furthest_position_ms = 0
                         self._playback_started_at = time.monotonic()
                         # Clear gapless state — the armed entry is now the
                         # playing one, so don't remove it from the queue
@@ -802,6 +820,15 @@ class DLNABackend(AudioBackend):
                                 f"(started {time.monotonic() - self._playback_started_at:.1f}s ago)"
                             )
                             continue  # Skip state update entirely
+                        elif self._stopped_before_track_end():
+                            logger.info(
+                                "[%s] Renderer stopped at %s of %s without a Qobuz command; "
+                                "not a track end, so not advancing",
+                                self.name,
+                                _format_ms(self._furthest_position_ms),
+                                _format_ms(self._duration_ms),
+                            )
+                            self._notify_playback_interrupted(self._furthest_position_ms)
                         else:
                             self._notify_track_ended()
 
@@ -816,6 +843,16 @@ class DLNABackend(AudioBackend):
                 break
             except Exception as e:
                 logger.debug(f"State poll error: {e}")
+
+    def _stopped_before_track_end(self) -> bool:
+        """Whether a stop landed well before the end of the track."""
+        # Unknown duration or a renderer that never reported a position: keep
+        # treating the stop as a track end rather than stall the queue.
+        return (
+            self._duration_ms > 0
+            and self._furthest_position_ms > 0
+            and self._duration_ms - self._furthest_position_ms > EARLY_STOP_MARGIN_MS
+        )
 
     def _build_didl(
         self,

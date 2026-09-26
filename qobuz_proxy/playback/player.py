@@ -158,6 +158,7 @@ class QobuzPlayer:
         self.backend.on_playback_error(self._on_playback_error)
         self.backend.on_position_update(self._on_position_update)
         self.backend.on_next_track_started(self._on_next_track_started)
+        self.backend.on_playback_interrupted(self._on_playback_interrupted)
 
         logger.info("QobuzPlayer initialized")
 
@@ -1601,6 +1602,29 @@ class QobuzPlayer:
                 # backend rather than the track being unavailable.
                 return
             await self._begin_skip_wait_locked()
+
+    def _on_playback_interrupted(self, position_ms: int) -> None:
+        """Callback when the device stopped before the track ended."""
+        asyncio.create_task(self._handle_playback_interrupted(self._current_track, position_ms))
+
+    async def _handle_playback_interrupted(
+        self, track: Optional[QueueTrack], position_ms: int
+    ) -> None:
+        """Report a stop made outside Qobuz instead of advancing the queue.
+
+        Another controller (or the device's own buttons) stopped the renderer.
+        Auto-advancing here would take the renderer back from whoever stopped
+        it. Report where it stopped so a later play from the app resumes there.
+        """
+        async with self._playback_lock:
+            if self._current_track is not track or self._state != PlaybackState.PLAYING:
+                return
+            logger.info("Renderer stopped before the track ended; reporting playback stopped")
+            self._clear_gapless_state()
+            self._state = PlaybackState.STOPPED
+            self._set_position(position_ms)
+            await self._send_state_update()
+            await self._report_stopped()
 
     def _on_playback_error(self, message: str) -> None:
         """Callback when backend reports playback error."""

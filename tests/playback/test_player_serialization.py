@@ -237,3 +237,21 @@ class TestStopDuringLoad:
 
         assert backend.played == ["7"]
         assert player.state == PlaybackState.PLAYING
+
+
+class TestPlaybackInterrupted:
+    async def test_stop_outside_qobuz_reports_stopped_without_advancing(self) -> None:
+        """Another controller stopped the renderer mid-track: report STOPPED at
+        the last position and leave the queue alone."""
+        player, backend = _make_player()
+        await player.play_track(queue_item_id=1, track_id="7")
+        next_cb = MagicMock(return_value={"queueItemId": 2, "trackId": "8"})
+        player.set_next_track_callbacks(next_cb, MagicMock())
+
+        player._on_playback_interrupted(20_000)
+        await asyncio.sleep(0.05)
+
+        assert player.state == PlaybackState.STOPPED
+        assert player._position_value_ms == 20_000
+        assert backend.played == ["7"]
+        next_cb.assert_not_called()

@@ -24,6 +24,7 @@ BufferStatusCallback = Callable[[BufferStatus], None]
 TrackEndedCallback = Callable[[], None]
 PlaybackErrorCallback = Callable[[str], None]  # error_message
 NextTrackStartedCallback = Callable[[], None]
+PlaybackInterruptedCallback = Callable[[int], None]  # last position_ms
 
 
 class AudioBackend(ABC):
@@ -54,6 +55,7 @@ class AudioBackend(ABC):
         self._on_track_ended: Optional[TrackEndedCallback] = None
         self._on_playback_error: Optional[PlaybackErrorCallback] = None
         self._on_next_track_started: Optional[NextTrackStartedCallback] = None
+        self._on_playback_interrupted: Optional[PlaybackInterruptedCallback] = None
 
     # =========================================================================
     # Playback Control - Required
@@ -200,6 +202,14 @@ class AudioBackend(ABC):
         """Register callback for playback errors."""
         self._on_playback_error = callback
 
+    def on_playback_interrupted(self, callback: Optional[PlaybackInterruptedCallback]) -> None:
+        """Register callback for the device stopping before the track ended.
+
+        Fired when playback stops without a Qobuz command and not at the end of
+        the track — e.g. another controller or the device's own buttons.
+        """
+        self._on_playback_interrupted = callback
+
     # =========================================================================
     # Event Notification Helpers
     # =========================================================================
@@ -245,6 +255,14 @@ class AudioBackend(ABC):
                 self._on_playback_error(message)
             except Exception as e:
                 logger.error(f"Playback error callback error: {e}")
+
+    def _notify_playback_interrupted(self, position_ms: int) -> None:
+        """Notify listeners that the device stopped before the track ended."""
+        if self._on_playback_interrupted:
+            try:
+                self._on_playback_interrupted(position_ms)
+            except Exception as e:
+                logger.error(f"Playback interrupted callback error: {e}")
 
     def _notify_next_track_started(self) -> None:
         """Notify listeners that a gapless transition to the next track occurred."""
