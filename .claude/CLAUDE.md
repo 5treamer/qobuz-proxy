@@ -128,6 +128,26 @@ The protocol uses `Position { timestamp: fixed64, value: uint32 }`. The app inte
 2. **State not updating**: `_playback_monitor_loop` only polls when `_state == PlaybackState.PLAYING`
 3. **Protocol encoding**: Log values passed to `encode_state_update()` — binary issues are invisible otherwise
 
+### Reproducing issues before fixing
+
+Reproduce a reported bug live before you change code. Then confirm the fix with the same reproduction. Many reports have no logs, and the plausible cause is often the wrong one. For example, #33 looked like a PAUSED SET_STATE, but the cause was a heartbeat race. After the live repro, add a unit test that fails without the fix.
+
+**Setup on a Mac (Claude can drive the macOS Qobuz app):**
+
+- **Proxy**: run it on the host with a scratch config at `logging.level: debug`. Keep a stable speaker `name`/`uuid` so the app keeps its device entry across restarts. Grep the log for `SET_STATE received`: the full decoded message is logged there.
+- **mDNS**: the macOS app does not see the host proxy's python-zeroconf announcement. Announce it again with `dns-sd -R <name> _qobuz-connect._tcp local <http_port> path=/streamcore type=SPEAKER sdk_version=py-1.0.0 "Name=<name>" device_uuid=<uuid>`.
+- **Real renderer (upmpdcli + mpd)**: use `alpine:3.20` and `apk add upmpdcli mpd mpc`, with mpd on a `null` audio output (Debian has no upmpdcli). Run it with `-p 49152:49152` in OrbStack. Find the description URL with an SSDP M-SEARCH from inside the container. Check what the renderer really does with `docker exec <c> mpc status`. OrbStack sometimes drops host→container routes for a few seconds; a burst of "No route to host" SOAP errors is that, not the proxy.
+- **Fake renderer**: `contrib/fake_renderer.py --on-fetch-error stop|stay-playing|transitioning` fetches the stream on Play and copies a renderer's reaction to a failed fetch. KEF-like renderers stay in PLAYING/TRANSITIONING with no audio.
+- **Other controllers**: to simulate one (Lyrion, BubbleUPnP), send SOAP `Stop` / `SetAVTransportURI` / `Play` straight to the renderer's AVTransport control URL. For fault injection (CDN failures, slow loads, no gapless), add temporary env-gated hooks and delete them before you commit. Run `grep -rn REPRO`.
+- **Driving the app**: take screenshots with `screencapture -R<window bounds>`, and click with a small Swift `CGEvent` binary (cliclick isn't installed). In the output picker the first click often only hovers, so click twice. After a proxy restart the app falls back to local output and may start playing on the Mac's speakers. Pause before you stop the proxy.
+
+**Timing and renderer behavior learned from live repros:**
+
+- **Heartbeat race**: `StateReporter` sends a report every 5 s and pauses while LOADING. The server answers a report with a SET_STATE, often one that carries only `nextQueueItem`. If that answer crosses an app command, it lands in the middle of the command. To hit that window on purpose, click about 0.6 s before a predicted heartbeat (the app→server→proxy path took about 0.6 s here).
+- **Poll interval**: the DLNA backend polls transport state every 2 s. The player's monitor loop also reads the position every 0.5 s while PLAYING.
+- **Position after Stop**: renderers report `RelTime 0:00:00` right after a Stop. Don't treat the latest position as the stop position.
+- **upmpdcli on a failed fetch**: it goes STOPPED, or mpd moves to the armed gapless next track. So upmpdcli hides failures that stall other renderers.
+
 ### Known Issues
 
 **Qobuz app shows wrong quality** (FR-DLNA-08): App always displays "Hi-Res 96k" regardless of actual streaming quality. Audio streams correctly at auto-detected quality. Investigation needed: check if a protocol message reports quality capability, review StreamCore32 for quality reporting fields.
