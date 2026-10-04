@@ -14,6 +14,8 @@ qobuz:
 device:
   name: "QobuzProxy"            # Name shown in Qobuz app
   uuid: null                    # Auto-generated if not specified
+  device_type: speaker          # Icon in the Qobuz app: speaker, streamer, soundbar,
+                                # headphones, tv, computer, mobile, tablet, cast
 
 backend:
   type: "dlna"                  # dlna or local
@@ -63,3 +65,4 @@ logging:
 #   - name: "Headphones"
 #     backend: local
 #     audio_device: "Built-in Output"
+#     device_type: headphones    # optional, icon in the Qobuz app (default: speaker)

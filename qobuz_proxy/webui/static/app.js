@@ -113,6 +113,27 @@
         return html;
     }
 
+    function deviceTypeOptions(selected) {
+        // Keys of DEVICE_TYPES in config.py; the type picks the Qobuz app icon.
+        var opts = [
+            { value: "speaker", label: "Speaker" },
+            { value: "streamer", label: "Streamer" },
+            { value: "soundbar", label: "Soundbar" },
+            { value: "headphones", label: "Headphones" },
+            { value: "tv", label: "TV" },
+            { value: "computer", label: "Computer" },
+            { value: "mobile", label: "Mobile" },
+            { value: "tablet", label: "Tablet" },
+            { value: "cast", label: "Cast" },
+        ];
+        var html = "";
+        for (var i = 0; i < opts.length; i++) {
+            var sel = String(selected) === opts[i].value ? ' selected' : '';
+            html += '<option value="' + opts[i].value + '"' + sel + '>' + opts[i].label + '</option>';
+        }
+        return html;
+    }
+
     // -------------------------------------------------------------------------
     // Speaker rendering
     // -------------------------------------------------------------------------
@@ -282,6 +303,11 @@
                 'This device doesn\'t report its hi-res support, so Auto uses CD (16/44). ' +
                 'Pick a quality if it supports better than CD.</div>';
         }
+        html += '</div>';
+
+        html += '<div class="form-group">';
+        html += '<label>Device type (icon in the Qobuz app)</label>';
+        html += '<select id="edit-device-type">' + deviceTypeOptions(cfg.device_type || "speaker") + '</select>';
         html += '</div>';
 
         html += '<div class="button-group">';
@@ -606,6 +632,11 @@
         html += '<select id="new-quality">' + qualityOptions("auto") + '</select>';
         html += '</div>';
 
+        html += '<div class="form-group">';
+        html += '<label>Device type (icon in the Qobuz app)</label>';
+        html += '<select id="new-device-type">' + deviceTypeOptions("speaker") + '</select>';
+        html += '</div>';
+
         html += '<div class="button-group">';
         html += '<button id="add-speaker-submit" onclick="submitAddSpeaker()">Add Speaker</button>';
         html += '<button class="button-secondary" onclick="' + (backend === "dlna" ? "selectBackend(\'dlna\')" : "selectBackend(\'local\')") + '">Back</button>';
@@ -624,10 +655,12 @@
         }
 
         var quality = document.getElementById("new-quality");
+        var deviceType = document.getElementById("new-device-type");
         var payload = {
             name: name,
             backend: selectedBackend,
             max_quality: quality ? quality.value : "auto",
+            device_type: deviceType ? deviceType.value : "speaker",
         };
 
         if (selectedBackend === "dlna") {
@@ -708,6 +741,8 @@
             name: name,
             max_quality: quality ? quality.value : "auto",
         };
+        var deviceType = document.getElementById("edit-device-type");
+        if (deviceType) payload.device_type = deviceType.value;
 
         if (backend === "dlna") {
             var ipEl = document.getElementById("edit-dlna-ip");

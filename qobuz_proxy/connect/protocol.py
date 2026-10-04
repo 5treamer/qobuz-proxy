@@ -265,6 +265,7 @@ class ProtocolCodec:
         max_audio_quality: int = 27,
         *,
         supports_volume_control: bool = True,
+        device_type: int = common_pb2.DEVICE_TYPE_SPEAKER,
         is_active: bool = False,
         reason: JoinSessionReason = JoinSessionReason.RECONNECTION,
     ) -> bytes:
@@ -278,6 +279,7 @@ class ProtocolCodec:
             initial_state: Optional initial renderer state
             max_audio_quality: Max quality ID (5=MP3, 6=CD, 7=Hi-Res 96k, 27=Hi-Res 192k)
             supports_volume_control: Whether the app may control device volume.
+            device_type: DeviceType enum value; selects the icon shown in the app.
             is_active: Request activation or restore this renderer's session ownership.
             reason: Distinguish explicit selection from transport reconnection.
 
@@ -290,7 +292,7 @@ class ProtocolCodec:
         device_info.friendlyName = friendly_name
         device_info.brand = "QobuzProxy"
         device_info.model = "Python"
-        device_info.type = common_pb2.DEVICE_TYPE_SPEAKER
+        device_info.type = device_type
         device_info.softwareVersion = "py-1.0.0"
 
         # Device capabilities - map quality ID to protocol value

@@ -433,3 +433,67 @@ class TestConfigPathFallback:
         config = load_config(config_path=explicit)
 
         assert config.config_path == explicit
+
+
+class TestDeviceType:
+    def test_device_types_match_proto_enum(self):
+        from qobuz_proxy.config import DEVICE_TYPES
+        from qobuz_proxy.proto import qconnect_common_pb2 as common_pb2
+
+        # The .proto keeps StreamCore32's names; the config uses the web player's names
+        proto_names = {
+            "streamer": "SPEAKERBOX",
+            "soundbar": "SPEAKERBOX2",
+            "computer": "LAPTOP",
+            "mobile": "PHONE",
+            "cast": "GOOGLE_CAST",
+        }
+        for name, value in DEVICE_TYPES.items():
+            proto_name = proto_names.get(name, name.upper())
+            assert common_pb2.DeviceType.Value(f"DEVICE_TYPE_{proto_name}") == value
+
+    def test_default_is_speaker(self):
+        assert SpeakerConfig().device_type == "speaker"
+        assert Config().device.device_type == "speaker"
+
+    def test_yaml_speaker_device_type(self):
+        speakers = _parse_yaml_speakers(
+            [{"name": "Phones", "backend": "local", "device_type": "Headphones"}, {"name": "A"}],
+            Config(),
+        )
+        assert speakers[0].device_type == "headphones"
+        assert speakers[1].device_type == "speaker"
+
+    def test_yaml_speaker_invalid_device_type(self):
+        with pytest.raises(ConfigError, match="Invalid device_type"):
+            _parse_yaml_speakers([{"name": "A", "device_type": "toaster"}], Config())
+
+    def test_env_speakers_device_type(self, monkeypatch):
+        monkeypatch.setenv("QOBUZPROXY_DEVICE_NAME", "A,B")
+        monkeypatch.setenv("QOBUZPROXY_DEVICE_TYPE", "tv,headphones")
+        speakers = _parse_env_speakers(Config())
+        assert [s.device_type for s in speakers] == ["tv", "headphones"]
+
+    def test_flat_config_device_type(self):
+        from qobuz_proxy.config import dict_to_config
+
+        config = dict_to_config(
+            {"device": {"device_type": "computer"}, "backend": {"type": "local"}}
+        )
+        assert _single_speaker_from_config(config).device_type == "computer"
+
+    def test_flat_config_invalid_device_type(self):
+        from qobuz_proxy.config import dict_to_config
+
+        with pytest.raises(ConfigError, match="Invalid device_type"):
+            dict_to_config({"device": {"device_type": "toaster"}})
+
+    def test_round_trip_through_config_dict(self):
+        from qobuz_proxy.config import speaker_config_to_dict
+
+        sc = SpeakerConfig(name="Phones", backend_type="local", device_type="headphones")
+        d = speaker_config_to_dict(sc)
+        assert d["device_type"] == "headphones"
+        assert _parse_yaml_speakers([d], Config())[0].device_type == "headphones"
+        # The default is not written, so existing config files stay unchanged
+        assert "device_type" not in speaker_config_to_dict(SpeakerConfig())

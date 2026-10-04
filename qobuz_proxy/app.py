@@ -11,7 +11,7 @@ import contextlib
 import logging
 import os
 import signal
-from typing import Optional
+from typing import Any, Optional
 
 from aiohttp import web
 
@@ -27,9 +27,11 @@ from qobuz_proxy.auth.oauth import OAUTH_APP_ID, OAUTH_APP_SECRET
 from qobuz_proxy.config import (
     AUTO_QUALITY,
     Config,
+    ConfigError,
     SpeakerConfig,
     _assign_ports,
     _generate_uuids,
+    parse_device_type,
     slugify_name,
 )
 from qobuz_proxy.speaker import Speaker
@@ -43,6 +45,7 @@ def _configured_speaker_status(sc: SpeakerConfig, status: str) -> dict:
     """API status for a config entry that is not currently running."""
     config_dict: dict = {
         "max_quality": "auto" if sc.max_quality == AUTO_QUALITY else sc.max_quality,
+        "device_type": sc.device_type,
     }
     if sc.backend_type == "dlna":
         config_dict["dlna_ip"] = sc.dlna_ip
@@ -60,6 +63,14 @@ def _configured_speaker_status(sc: SpeakerConfig, status: str) -> dict:
         "config": config_dict,
         "now_playing": None,
     }
+
+
+def _parse_body_device_type(value: Any) -> str:
+    """Parse a device type from a web UI request body (ValueError -> HTTP 400)."""
+    try:
+        return parse_device_type(value)
+    except ConfigError as e:
+        raise ValueError(str(e)) from e
 
 
 # Backoff schedule for speakers that fail to start (renderer offline, boot
@@ -416,6 +427,7 @@ class QobuzProxy:
 
         sc = SpeakerConfig(
             name=name,
+            device_type=_parse_body_device_type(body.get("device_type")),
             backend_type=backend_type,
             max_quality=max_quality,
             dlna_ip=body.get("dlna_ip", ""),
@@ -490,6 +502,7 @@ class QobuzProxy:
         new_config = SpeakerConfig(
             name=new_name,
             uuid=old_config.uuid,
+            device_type=_parse_body_device_type(body.get("device_type", old_config.device_type)),
             backend_type=old_config.backend_type,  # Immutable
             max_quality=max_quality,
             http_port=old_config.http_port,

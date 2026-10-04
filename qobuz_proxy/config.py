@@ -34,6 +34,25 @@ DEFAULT_PROXY_PORT = 7120
 # Namespace UUID for deterministic speaker UUID generation
 _SPEAKER_UUID_NAMESPACE = uuid.UUID("f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
+# Qobuz Connect device types (DeviceType enum in protos/qconnect_common.proto).
+# The type selects the icon the Qobuz app shows for the device. The enum values
+# come from StreamCore32 (https://github.com/tobiasguyer/StreamCore32); qonductor
+# (https://github.com/nickblt/qonductor, Rust) uses the same values. The names are
+# the ones the Qobuz web player uses, as documented by qobuz-connect
+# (https://github.com/ciaens/qobuz-connect).
+DEFAULT_DEVICE_TYPE = "speaker"
+DEVICE_TYPES = {
+    "speaker": 1,
+    "streamer": 2,
+    "tv": 3,
+    "soundbar": 4,
+    "computer": 5,
+    "mobile": 6,
+    "cast": 7,
+    "headphones": 8,
+    "tablet": 9,
+}
+
 # Valid log levels
 VALID_LOG_LEVELS = {"debug", "info", "warning", "error"}
 
@@ -47,6 +66,7 @@ ENV_MAPPINGS = {
     "QOBUZ_MAX_QUALITY": ("qobuz", "max_quality"),
     # Device
     "QOBUZPROXY_DEVICE_NAME": ("device", "name"),
+    "QOBUZPROXY_DEVICE_TYPE": ("device", "device_type"),
     # DLNA
     "QOBUZPROXY_DLNA_IP": ("backend", "dlna", "ip"),
     "QOBUZPROXY_DLNA_PORT": ("backend", "dlna", "port"),
@@ -86,6 +106,7 @@ class DeviceConfig:
 
     name: str = "QobuzProxy"
     uuid: str = ""  # Auto-generated if empty
+    device_type: str = DEFAULT_DEVICE_TYPE  # Key of DEVICE_TYPES
 
     def __post_init__(self) -> None:
         if not self.uuid:
@@ -141,6 +162,7 @@ class SpeakerConfig:
 
     name: str = "QobuzProxy"
     uuid: str = ""
+    device_type: str = DEFAULT_DEVICE_TYPE
     backend_type: str = "dlna"
     max_quality: int = 27
     http_port: int = 0  # 0 = auto-assign
@@ -228,6 +250,22 @@ def validate_config(config: Config) -> None:
         raise ConfigError("Configuration validation failed:\n  - " + "\n  - ".join(errors))
 
 
+def parse_device_type(value: Any) -> str:
+    """Normalize a device type name (e.g. "Headphones" -> "headphones").
+
+    Raises:
+        ConfigError: If the value is not a known device type.
+    """
+    device_type = str(value).strip().lower() if value is not None else ""
+    if not device_type:
+        return DEFAULT_DEVICE_TYPE
+    if device_type not in DEVICE_TYPES:
+        raise ConfigError(
+            f"Invalid device_type: {value!r}. Valid values: {', '.join(DEVICE_TYPES)}"
+        )
+    return device_type
+
+
 def generate_speaker_uuid(speaker_name: str) -> str:
     """Generate a deterministic UUID for a speaker based on hostname and name."""
     return str(uuid.uuid5(_SPEAKER_UUID_NAMESPACE, f"{platform.node()}:{speaker_name}"))
@@ -252,6 +290,8 @@ def speaker_config_to_dict(sc: SpeakerConfig) -> dict:
     }
     if sc.uuid:
         d["uuid"] = sc.uuid
+    if sc.device_type != DEFAULT_DEVICE_TYPE:
+        d["device_type"] = sc.device_type
     if sc.backend_type == "dlna":
         d["dlna_ip"] = sc.dlna_ip
         d["dlna_port"] = sc.dlna_port
@@ -269,6 +309,7 @@ def _single_speaker_from_config(config: Config) -> SpeakerConfig:
     return SpeakerConfig(
         name=config.device.name,
         uuid=config.device.uuid,
+        device_type=config.device.device_type,
         backend_type=config.backend.type,
         max_quality=config.qobuz.max_quality,
         http_port=0,  # auto-assigned by _assign_ports (avoids conflict with web UI port)
@@ -374,6 +415,7 @@ def _parse_yaml_speakers(raw_speakers: list[dict], config: Config) -> list[Speak
         speaker = SpeakerConfig(
             name=raw.get("name", "QobuzProxy"),
             uuid=raw.get("uuid", ""),
+            device_type=parse_device_type(raw.get("device_type", DEFAULT_DEVICE_TYPE)),
             backend_type=raw.get("backend", "dlna"),
             max_quality=_parse_quality_value(raw.get("max_quality", 27)),
             http_port=int(raw.get("http_port", 0)),
@@ -424,6 +466,7 @@ def _parse_env_speakers(config: Config) -> list[SpeakerConfig]:
     count = len(names)
 
     backend_types = _split_env_padded("QOBUZPROXY_BACKEND", count, "dlna")
+    device_types = _split_env_padded("QOBUZPROXY_DEVICE_TYPE", count, DEFAULT_DEVICE_TYPE)
     dlna_ips = _split_env_padded("QOBUZPROXY_DLNA_IP", count, "")
     dlna_ports_raw = _split_env_padded("QOBUZPROXY_DLNA_PORT", count, "1400")
     dlna_fixed_volumes_raw = _split_env_padded("QOBUZPROXY_DLNA_FIXED_VOLUME", count, "false")
@@ -437,6 +480,7 @@ def _parse_env_speakers(config: Config) -> list[SpeakerConfig]:
     for i, name in enumerate(names):
         speaker = SpeakerConfig(
             name=name,
+            device_type=parse_device_type(device_types[i]),
             backend_type=backend_types[i],
             max_quality=_parse_quality_value(qualities_raw[i]),
             http_port=int(http_ports_raw[i]),
@@ -613,6 +657,8 @@ def dict_to_config(d: dict) -> Config:
         config.device.name = dev.get("name", config.device.name)
         if dev.get("uuid"):
             config.device.uuid = dev["uuid"]
+        if "device_type" in dev:
+            config.device.device_type = parse_device_type(dev["device_type"])
 
     # Backend
     if "backend" in d:
