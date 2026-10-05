@@ -474,6 +474,36 @@ class TestDeviceType:
         speakers = _parse_env_speakers(Config())
         assert [s.device_type for s in speakers] == ["tv", "headphones"]
 
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [("tv,headphones", ["tv", "headphones"]), ("headphones", ["headphones", "headphones"])],
+    )
+    def test_load_config_multi_speaker_device_types(self, monkeypatch, tmp_path, value, expected):
+        monkeypatch.setenv("QOBUZPROXY_DEVICE_NAME", "A,B")
+        monkeypatch.setenv("QOBUZPROXY_BACKEND", "local")
+        monkeypatch.setenv("QOBUZPROXY_DEVICE_TYPE", value)
+
+        config = load_config(config_path=tmp_path / "config.yaml")
+
+        assert [s.device_type for s in config.speakers] == expected
+
+    @pytest.mark.parametrize(
+        ("value", "error"),
+        [
+            ("tv,toaster", "Invalid device_type: 'toaster'"),
+            ("tv,headphones,tablet", "expected 1 or 2"),
+        ],
+    )
+    def test_load_config_rejects_invalid_multi_speaker_device_types(
+        self, monkeypatch, tmp_path, value, error
+    ):
+        monkeypatch.setenv("QOBUZPROXY_DEVICE_NAME", "A,B")
+        monkeypatch.setenv("QOBUZPROXY_BACKEND", "local")
+        monkeypatch.setenv("QOBUZPROXY_DEVICE_TYPE", value)
+
+        with pytest.raises(ConfigError, match=error):
+            load_config(config_path=tmp_path / "config.yaml")
+
     def test_flat_config_device_type(self):
         from qobuz_proxy.config import dict_to_config
 

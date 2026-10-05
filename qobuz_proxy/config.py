@@ -573,6 +573,12 @@ def load_env_config() -> dict:
     for env_var, path in ENV_MAPPINGS.items():
         value: Any = os.environ.get(env_var)
         if value is not None:
+            # Multi-speaker device types are split and validated by
+            # _parse_env_speakers(), rather than treated as one flat value.
+            if env_var == "QOBUZPROXY_DEVICE_TYPE" and "," in os.environ.get(
+                "QOBUZPROXY_DEVICE_NAME", ""
+            ):
+                continue
             # Handle max_quality specially to support "auto"
             if env_var == "QOBUZ_MAX_QUALITY":
                 if value.lower() == "auto":
