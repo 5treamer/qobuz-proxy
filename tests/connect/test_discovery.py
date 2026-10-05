@@ -1,5 +1,6 @@
 """Discovery must advertise and receive queries on the same LAN interface."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -51,3 +52,24 @@ async def test_conflicting_service_reuses_the_scoped_socket():
         await discovery._register_mdns()
         zeroconf.assert_called_once_with(interfaces=["10.0.1.9"])
         assert zc.register_service.call_args.kwargs == {"cooperating_responders": True}
+
+
+@pytest.mark.parametrize(
+    ("device_type", "expected"),
+    [("speaker", "SPEAKER"), ("tv", "TV"), ("streamer", "STREAMER"), ("soundbar", "SOUNDBAR")],
+)
+async def test_device_type_is_advertised(device_type, expected):
+    config = Config()
+    config.device.device_type = device_type
+    discovery = DiscoveryService(config, "test")
+
+    response = await discovery._handle_display_info(MagicMock())
+    assert json.loads(response.text)["type"] == expected
+
+    with (
+        patch.object(discovery, "_get_local_ip", return_value="10.0.1.9"),
+        patch("qobuz_proxy.connect.discovery.Zeroconf") as zeroconf,
+    ):
+        await discovery._register_mdns()
+        info = zeroconf.return_value.register_service.call_args.args[0]
+        assert info.properties[b"type"].decode() == expected

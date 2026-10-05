@@ -579,6 +579,58 @@ class TestSpeakerEditCallbacks:
             await app._on_edit_speaker("moode", {"fixed_volume": False})
             assert config.speakers[0].dlna_fixed_volume is False
 
+    async def test_edit_sets_device_type(self):
+        """The edit form's device type must round-trip and survive edits that omit it."""
+        import pytest
+
+        config = _make_config(_make_speaker_config(name="Moode"))
+        old_speaker = MagicMock()
+        old_speaker.name = "Moode"
+        old_speaker.stop = AsyncMock()
+
+        app = QobuzProxy(config)
+        app._api_client = MagicMock()
+        app._speakers = [old_speaker]
+
+        new_speaker = MagicMock()
+        new_speaker.name = "Moode"
+        new_speaker.start = AsyncMock(return_value=True)
+        new_speaker.stop = AsyncMock()
+        new_speaker.get_status.return_value = {"id": "moode", "status": "idle"}
+
+        with (
+            patch("qobuz_proxy.app.Speaker", return_value=new_speaker) as mock_speaker_cls,
+            patch.object(app, "_save_config"),
+        ):
+            await app._on_edit_speaker("moode", {"device_type": "headphones"})
+            assert config.speakers[0].device_type == "headphones"
+            assert mock_speaker_cls.call_args.kwargs["config"].device_type == "headphones"
+
+            await app._on_edit_speaker("moode", {"max_quality": 6})
+            assert config.speakers[0].device_type == "headphones"
+
+            with pytest.raises(ValueError, match="Invalid device_type"):
+                await app._on_edit_speaker("moode", {"device_type": "toaster"})
+            assert config.speakers[0].device_type == "headphones"
+
+    async def test_add_sets_device_type(self):
+        config = _make_config()
+        app = QobuzProxy(config)
+        app._api_client = MagicMock()
+        app._speakers = []
+
+        new_speaker = MagicMock()
+        new_speaker.start = AsyncMock(return_value=True)
+
+        with (
+            patch("qobuz_proxy.app.Speaker", return_value=new_speaker),
+            patch.object(app, "_save_config"),
+        ):
+            await app._on_add_speaker(
+                {"name": "Phones", "backend": "local", "device_type": "headphones"}
+            )
+        assert config.speakers[0].device_type == "headphones"
+
     async def test_add_rejects_duplicate_name_from_config(self):
         """A config entry whose speaker isn't running must still block the name."""
         import pytest
