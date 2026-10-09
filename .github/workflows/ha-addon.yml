@@ -1,0 +1,83 @@
+name: Home Assistant add-on
+
+# Builds two multi-arch images (amd64 + arm64), tagged with the version from
+# ha-addon/config.yaml and `latest`, and pushes them to GHCR:
+#   ghcr.io/<owner>/qobuz-proxy     standalone container (root Dockerfile)
+#   ghcr.io/<owner>/qobuz-proxy-ha  Home Assistant add-on (ha-addon/Dockerfile)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'qobuz_proxy/**'
+      - 'protos/**'
+      - 'pyproject.toml'
+      - 'Dockerfile'
+      - 'ha-addon/**'
+      - '.github/workflows/ha-addon.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ha-addon-images
+  cancel-in-progress: false
+
+jobs:
+  images:
+    name: Container images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version and image names
+        id: meta
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "version=$(yq -r '.version' ha-addon/config.yaml)" >> "$GITHUB_OUTPUT"
+          echo "addon_image=$(yq -r '.image' ha-addon/config.yaml)" >> "$GITHUB_OUTPUT"
+          echo "app_image=ghcr.io/${owner}/qobuz-proxy" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Standalone image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+          tags: |
+            ${{ steps.meta.outputs.app_image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.app_image }}:latest
+
+      - name: Home Assistant add-on image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ha-addon/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+          tags: |
+            ${{ steps.meta.outputs.addon_image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.addon_image }}:latest
