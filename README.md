@@ -2,6 +2,31 @@
 
 A bridge between Qobuz Connect and DLNA speakers. Also supports local audio playback.
 
+## Home Assistant add-on & Docker image (this fork)
+
+[![Add-on version](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2F5treamer%2Fqobuz-proxy%2Fmain%2Fha-addon%2Fconfig.yaml&query=%24.version&label=add-on%20version)](ha-addon/CHANGELOG.md)
+![Home Assistant OS](https://img.shields.io/badge/Home%20Assistant%20OS-add--on-41BDF5?logo=homeassistant&logoColor=white)
+![Architectures](https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-blue)
+
+This fork is a version of QobuzProxy 1.7.6 packaged with
+[Claude Code](https://claude.com/claude-code) as a **Home Assistant OS add-on**
+and a **Docker image** for amd64 and arm64 (Raspberry Pi).
+
+QobuzProxy turns **any DLNA/UPnP player** into a fully featured
+**Qobuz Connect** device: for example a free [moOde audio](https://moodeaudio.org/)
+player on a Raspberry Pi, Volumio, upmpdcli, or network speakers and
+receivers. Pick it in the official Qobuz app and control play, pause, skip,
+queue and volume from your phone, in up to 24-bit/192 kHz hi-res quality.
+It is free and open source (MIT).
+
+[![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2F5treamer%2Fqobuz-proxy)
+
+- **Home Assistant**: Settings → Add-ons → Add-on Store → ⋮ → Repositories →
+  add `https://github.com/5treamer/qobuz-proxy` → install **Qobuz Proxy**.
+- **Docker**: `docker run -d --network host -v ./data:/data ghcr.io/5treamer/qobuz-proxy:latest`
+
+Full guide: [docs/home-assistant.md](docs/home-assistant.md)
+
 ## Why?
 
 Qobuz has a "Connect" feature (similar to Spotify Connect) that lets you control playback on supported devices from their app. Unfortunately, many popular speakers — most notably **Sonos** — don't support Qobuz Connect natively. This means you can't pick a Sonos speaker as a playback target in the Qobuz app, even though Sonos fully supports DLNA/UPnP streaming.
