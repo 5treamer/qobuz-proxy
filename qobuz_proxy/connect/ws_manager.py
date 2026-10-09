@@ -14,7 +14,7 @@ import websockets
 from websockets import ClientConnection
 
 from qobuz_proxy.auth.tokens import WSToken
-from qobuz_proxy.config import Config
+from qobuz_proxy.config import DEVICE_TYPES, Config
 
 from .protocol import (
     DecodedMessage,
@@ -582,6 +582,7 @@ class WsManager:
             supports_volume_control=not (
                 self.config.backend.type == "dlna" and self.config.backend.dlna.fixed_volume
             ),
+            device_type=DEVICE_TYPES[self.config.device.device_type],
             is_active=is_active,
             reason=(
                 JoinSessionReason.CONTROLLER_REQUEST

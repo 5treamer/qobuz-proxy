@@ -526,6 +526,18 @@ class TestSessionOwnership:
         await manager._send_join_session()
         assert _last_join(manager).deviceInfo.capabilities.volumeRemoteControl == expected
 
+    @pytest.mark.parametrize(
+        ("device_type", "expected"),
+        [("speaker", 1), ("streamer", 2), ("soundbar", 4), ("headphones", 8)],
+    )
+    async def test_join_device_type(self, config, valid_tokens, device_type, expected):
+        config.device.device_type = device_type
+        manager = WsManager(config)
+        manager.set_tokens(valid_tokens, activate=True)
+        manager._ws = AsyncMock()
+        await manager._send_join_session()
+        assert _last_join(manager).deviceInfo.type == expected
+
     async def test_three_speaker_refresh_preserves_selected_owner(self, config, valid_tokens):
         managers = [WsManager(config) for _ in range(3)]
         for manager in managers:

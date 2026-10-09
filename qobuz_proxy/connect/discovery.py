@@ -190,7 +190,7 @@ class DiscoveryService:
         quality_str = QUALITY_TO_HTTP.get(quality_id, "HIRES_L3")
 
         response = {
-            "type": "SPEAKER",
+            "type": self.config.device.device_type.upper(),
             "friendly_name": self.config.device.name,
             "model_display_name": "qobuz-proxy",
             "brand_display_name": "qobuz-proxy",
@@ -286,7 +286,7 @@ class DiscoveryService:
 
         properties = {
             "path": "/streamcore",
-            "type": "SPEAKER",
+            "type": self.config.device.device_type.upper(),
             "sdk_version": SDK_VERSION,
             "Name": self.config.device.name,  # Original name for display
             "device_uuid": self.config.device.uuid,
