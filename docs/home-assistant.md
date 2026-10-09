@@ -1,8 +1,13 @@
 # QobuzProxy on Home Assistant OS and Docker
 
-This fork packages [QobuzProxy](https://github.com/leolobato/qobuz-proxy) as a
-**Home Assistant add-on** and as a **ready-to-run container image**, both
-automatically kept on the latest upstream release.
+This fork is a version of [QobuzProxy](https://github.com/leolobato/qobuz-proxy)
+packaged with Claude Code as a **Home Assistant add-on** and as a
+**ready-to-run container image**.
+
+QobuzProxy turns any DLNA/UPnP player into a fully featured Qobuz Connect
+device: for example a free moOde audio player on a Raspberry Pi, Volumio,
+upmpdcli, or network speakers and receivers. You control it from the official
+Qobuz app, in up to 24-bit/192 kHz hi-res quality.
 
 | What                       | Where                                         |
 |----------------------------|-----------------------------------------------|
@@ -52,37 +57,37 @@ Then open `http://<host-ip>:8689`, log in to Qobuz and add your speakers.
 
 ## How updates work
 
-- **Sync upstream** (daily, `.github/workflows/sync-upstream.yml`) merges the
-  upstream `main` branch, sets the add-on `version` in `ha-addon/config.yaml` to
-  the upstream version from `pyproject.toml`, and starts the image build.
-- **Home Assistant add-on** (`.github/workflows/ha-addon.yml`) builds both images
-  for amd64 and arm64 and pushes them to GHCR with the version tag and `latest`.
-- Home Assistant shows the update as soon as the new `version` is on `main`
-  and the image exists.
+Updates are done by hand, so nothing from the original project reaches this
+fork (or your Home Assistant) without review:
+
+1. On the repository page, click **Sync fork → Update branch** to merge the
+   latest upstream changes into `main` (or merge them locally with git).
+2. Set `version` in `ha-addon/config.yaml` to the new version from
+   `pyproject.toml` and add an entry to `ha-addon/CHANGELOG.md`.
+3. Push to `main`. The **Home Assistant add-on** workflow
+   (`.github/workflows/ha-addon.yml`) builds both images for amd64 and arm64
+   and pushes them to GHCR with the version tag and `latest`.
+4. Home Assistant shows the update once the new `version` is on `main`
+   and the image exists.
+
+Packaging-only changes (no new upstream version) use a fourth version part,
+e.g. `1.7.6` → `1.7.6.1`.
 
 ## Maintainer notes
 
 One-time setup for this fork:
 
-1. **Actions → enable workflows** (GitHub disables workflows on new forks,
-   including scheduled ones).
+1. **Actions → enable workflows** (GitHub disables workflows on new forks).
 2. Run **Home Assistant add-on** once via **Run workflow**.
 3. Make both packages public: profile → **Packages** → `qobuz-proxy-ha` and
    `qobuz-proxy` → **Package settings** → **Change visibility → Public**.
    Without this, Home Assistant cannot pull the image.
 4. Repository **About** (gear icon): set a description and topics so people
    can find the fork, e.g. description
-   *"Qobuz Connect for Sonos & DLNA speakers – Home Assistant add-on and Docker image (QobuzProxy)"*
-   and topics `qobuz`, `qobuz-connect`, `home-assistant`, `home-assistant-addon`,
-   `hassio`, `hassio-addon`, `sonos`, `dlna`, `upnp`, `docker`, `hi-res-audio`.
-
-If **Sync upstream** fails (merge conflict, or upstream changed files under
-`.github/workflows/`, which `GITHUB_TOKEN` may not push), click **Sync fork** on
-the repository page, fix conflicts if any, and run **Sync upstream** again to
-bump the version.
-
-Packaging-only changes (no new upstream version) need a manual `version` bump
-in `ha-addon/config.yaml`, e.g. `1.7.6` → `1.7.6.1`, plus a changelog entry.
+   *"QobuzProxy 1.7.6, packaged with Claude Code: turns any DLNA/UPnP player (moOde, Volumio, ...) into a Qobuz Connect device. Home Assistant add-on + Docker image."*
+   and topics `qobuz`, `qobuz-connect`, `dlna`, `upnp`, `moode`, `moode-audio`,
+   `volumio`, `home-assistant`, `home-assistant-addon`, `hassio-addon`,
+   `docker`, `raspberry-pi`, `hi-res-audio`.
 
 ## Files
 
@@ -93,4 +98,3 @@ in `ha-addon/config.yaml`, e.g. `1.7.6` → `1.7.6.1`, plus a changelog entry.
 | `ha-addon/Dockerfile`, `ha-addon/run.sh` | Add-on image and entry point           |
 | `ha-addon/README.md`, `ha-addon/DOCS.md`, `ha-addon/CHANGELOG.md` | Texts shown in the add-on store |
 | `.github/workflows/ha-addon.yml`      | Builds and pushes both images             |
-| `.github/workflows/sync-upstream.yml` | Daily upstream sync and version bump      |

@@ -1,5 +1,5 @@
 # Home Assistant add-on repository manifest.
 # Add https://github.com/5treamer/qobuz-proxy under Settings → Add-ons → Add-on Store → ⋮ → Repositories.
-name: QobuzProxy – Qobuz Connect for Home Assistant
+name: QobuzProxy – Qobuz Connect for any DLNA player
 url: https://github.com/5treamer/qobuz-proxy
 maintainer: QobuzProxy contributors

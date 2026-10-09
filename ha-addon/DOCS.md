@@ -1,7 +1,8 @@
 # Qobuz Proxy
 
-QobuzProxy appears as a Qobuz Connect device in the official Qobuz app and
-streams to your DLNA/UPnP speakers (Sonos, Denon HEOS, Bluesound, upmpdcli, ...).
+QobuzProxy turns any DLNA/UPnP player (moOde audio, Volumio, upmpdcli,
+network speakers and receivers, ...) into a Qobuz Connect device that you
+control from the official Qobuz app.
 
 ## Setup
 
