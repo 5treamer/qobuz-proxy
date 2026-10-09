@@ -57,34 +57,38 @@ Then open `http://<host-ip>:8689`, log in to Qobuz and add your speakers.
 
 ## How updates work
 
-Updates are done by hand, so nothing from the original project reaches this
-fork (or your Home Assistant) without review:
+- **Sync upstream** (daily, `.github/workflows/sync-upstream.yml`) merges the
+  upstream `main` branch via GitHub's "Sync fork" API, sets the add-on
+  `version` in `ha-addon/config.yaml` to the upstream version from
+  `pyproject.toml`, adds a changelog entry and starts the image build.
+  It can also be started by hand: **Actions → Sync upstream → Run workflow**.
+- **Home Assistant add-on** (`.github/workflows/ha-addon.yml`) builds both images
+  for amd64 and arm64 and pushes them to GHCR with the version tag and `latest`.
+- Home Assistant shows the update once the new `version` is on `main` and the
+  image exists. Updates are offered, not installed, unless you enable
+  auto-update for the add-on.
 
-1. On the repository page, click **Sync fork → Update branch** to merge the
-   latest upstream changes into `main` (or merge them locally with git).
-2. Set `version` in `ha-addon/config.yaml` to the new version from
-   `pyproject.toml` and add an entry to `ha-addon/CHANGELOG.md`.
-3. Push to `main`. The **Home Assistant add-on** workflow
-   (`.github/workflows/ha-addon.yml`) builds both images for amd64 and arm64
-   and pushes them to GHCR with the version tag and `latest`.
-4. Home Assistant shows the update once the new `version` is on `main`
-   and the image exists.
+If **Sync upstream** fails (merge conflict, or upstream changed files under
+`.github/workflows/`, which `GITHUB_TOKEN` may not push), click
+**Sync fork → Update branch** on the repository page, fix conflicts if any,
+and run **Sync upstream** again to bump the version.
 
 Packaging-only changes (no new upstream version) use a fourth version part,
-e.g. `1.7.6` → `1.7.6.1`.
+e.g. `1.7.7` → `1.7.7.1`; the sync treats that as up to date.
 
 ## Maintainer notes
 
 One-time setup for this fork:
 
-1. **Actions → enable workflows** (GitHub disables workflows on new forks).
+1. **Actions → enable workflows** (GitHub disables workflows on new forks,
+   including scheduled ones).
 2. Run **Home Assistant add-on** once via **Run workflow**.
 3. Make both packages public: profile → **Packages** → `qobuz-proxy-ha` and
    `qobuz-proxy` → **Package settings** → **Change visibility → Public**.
    Without this, Home Assistant cannot pull the image.
 4. Repository **About** (gear icon): set a description and topics so people
    can find the fork, e.g. description
-   *"QobuzProxy 1.7.6, packaged with Claude Code: turns any DLNA/UPnP player (moOde, Volumio, ...) into a Qobuz Connect device. Home Assistant add-on + Docker image."*
+   *"QobuzProxy, packaged with Claude Code: turns any DLNA/UPnP player (moOde, Volumio, ...) into a Qobuz Connect device. Home Assistant add-on + Docker image."*
    and topics `qobuz`, `qobuz-connect`, `dlna`, `upnp`, `moode`, `moode-audio`,
    `volumio`, `home-assistant`, `home-assistant-addon`, `hassio-addon`,
    `docker`, `raspberry-pi`, `hi-res-audio`.
@@ -98,3 +102,4 @@ One-time setup for this fork:
 | `ha-addon/Dockerfile`, `ha-addon/run.sh` | Add-on image and entry point           |
 | `ha-addon/README.md`, `ha-addon/DOCS.md`, `ha-addon/CHANGELOG.md` | Texts shown in the add-on store |
 | `.github/workflows/ha-addon.yml`      | Builds and pushes both images             |
+| `.github/workflows/sync-upstream.yml` | Daily upstream sync and version bump      |

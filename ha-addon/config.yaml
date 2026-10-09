@@ -1,9 +1,9 @@
 # Home Assistant add-on manifest for QobuzProxy.
-# `version` follows the QobuzProxy release in pyproject.toml. The "Home Assistant
-# add-on" workflow builds the image tagged with it. Home Assistant only offers
-# an update when this changes.
+# `version` follows the QobuzProxy release in pyproject.toml; the "Sync upstream"
+# workflow bumps it, and the "Home Assistant add-on" workflow builds the image
+# tagged with it. Home Assistant only offers an update when this changes.
 name: Qobuz Proxy
-version: "1.7.6"
+version: "1.7.7"
 slug: qobuz_proxy
 description: Turn any DLNA/UPnP player (moOde, Volumio, ...) into a Qobuz Connect device
 url: https://github.com/5treamer/qobuz-proxy

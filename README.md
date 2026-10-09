@@ -8,7 +8,7 @@ A bridge between Qobuz Connect and DLNA speakers. Also supports local audio play
 ![Home Assistant OS](https://img.shields.io/badge/Home%20Assistant%20OS-add--on-41BDF5?logo=homeassistant&logoColor=white)
 ![Architectures](https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-blue)
 
-This fork is a version of QobuzProxy 1.7.6 packaged with
+This fork is a version of QobuzProxy packaged with
 [Claude Code](https://claude.com/claude-code) as a **Home Assistant OS add-on**
 and a **Docker image** for amd64 and arm64 (Raspberry Pi).
 
@@ -17,7 +17,8 @@ QobuzProxy turns **any DLNA/UPnP player** into a fully featured
 player on a Raspberry Pi, Volumio, upmpdcli, or network speakers and
 receivers. Pick it in the official Qobuz app and control play, pause, skip,
 queue and volume from your phone, in up to 24-bit/192 kHz hi-res quality.
-It is free and open source (MIT).
+It is free and open source (MIT), and follows the latest upstream release
+automatically.
 
 [![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2F5treamer%2Fqobuz-proxy)
 
