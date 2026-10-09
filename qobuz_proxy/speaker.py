@@ -150,6 +150,7 @@ class Speaker:
             ),
             "effective_quality": self._effective_quality,
             "quality_source": self._quality_source,
+            "device_type": self._config.device_type,
         }
         if self._config.backend_type == "dlna":
             config_dict["dlna_ip"] = self._config.dlna_ip
@@ -185,6 +186,7 @@ class Speaker:
             device=DeviceConfig(
                 name=self._config.name,
                 uuid=self._config.uuid,
+                device_type=self._config.device_type,
             ),
             backend=BackendConfig(
                 type=self._config.backend_type,

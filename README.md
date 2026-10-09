@@ -45,6 +45,7 @@ QobuzProxy solves this by acting as a virtual Qobuz Connect device on your netwo
 - Streams audio to DLNA renderers (Sonos, Denon HEOS, etc.)
 - Local audio playback via PortAudio (play directly through your machine's speakers/DAC)
 - **Web UI for speaker management** — discover, add, edit, and remove speakers from your browser
+- **Device icons** — choose how each speaker looks in the Qobuz app (speaker, soundbar, headphones, TV, ...)
 - Auto-detects device capabilities to select optimal audio quality
 - Zero-config startup — boot with no config file, set everything up from the web UI
 - Runs on Raspberry Pi, Docker, or any Linux/macOS system
@@ -162,6 +163,39 @@ speakers:
 
 Ports are auto-assigned unless explicitly set via `http_port` and `proxy_port`. See `config.yaml.example` for all available options.
 
+### Device Icons
+
+Each speaker can tell the Qobuz app what kind of device it is. The app uses this to pick the icon it shows in its device list. By default every speaker is a `speaker`.
+
+| `device_type` | Shown as | Protocol value |
+|---|---|---|
+| `speaker` (default) | Speaker | 1 |
+| `streamer` | Streamer | 2 |
+| `tv` | TV | 3 |
+| `soundbar` | Soundbar | 4 |
+| `computer` | Computer | 5 |
+| `mobile` | Mobile | 6 |
+| `cast` | Cast | 7 |
+| `headphones` | Headphones | 8 |
+| `tablet` | Tablet | 9 |
+
+You can set it in three ways:
+
+- **Web UI:** pick a **Device type** when you add or edit a speaker.
+- **`config.yaml`:** add `device_type` to a speaker:
+  ```yaml
+  speakers:
+    - name: "Headphones"
+      backend: local
+      device_type: headphones
+  ```
+  For a single speaker without a `speakers` list, use `device.device_type`.
+- **Environment variable:** `QOBUZPROXY_DEVICE_TYPE=headphones`. With several speakers, give one value per speaker, separated by commas, in the same order as `QOBUZPROXY_DEVICE_NAME`.
+
+An unknown value stops QobuzProxy with an error that lists the valid values.
+
+The device type is sent everywhere the Qobuz app learns about a device: in the mDNS announcement, in the `/streamcore/get-display-info` response and in the Qobuz Connect session (`DeviceInfo.type`).
+
 ### Network Requirements
 
 **Important**: QobuzProxy requires `network_mode: host` (Docker) or direct host access for mDNS discovery to work. This allows the Qobuz app to find the device on your local network.
@@ -209,6 +243,8 @@ Bug reports and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIB
 ## Acknowledgments
 
 This project is based on the Qobuz Connect reverse-engineering work done by [Tobias Guyer](https://github.com/tobiasguyer) in [StreamCore32](https://github.com/tobiasguyer/StreamCore32). Thanks to his efforts in figuring out the Qobuz Connect protocol, this project was possible.
+
+The device icons feature uses the `DeviceType` values from StreamCore32, was inspired by [qonductor](https://github.com/nickblt/qonductor) by [@nickblt](https://github.com/nickblt), and uses the device type names of the Qobuz web player as documented by [qobuz-connect](https://github.com/ciaens/qobuz-connect) by [@ciaens](https://github.com/ciaens).
 
 ## Disclaimer
 

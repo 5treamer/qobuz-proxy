@@ -132,6 +132,22 @@ class TestEncoding:
         assert join.isActive is False
         assert join.reason == 2
 
+    def test_encode_join_session_device_type(
+        self, codec: ProtocolCodec, device_uuid: bytes
+    ) -> None:
+        """Device type defaults to SPEAKER and can be overridden."""
+        session_uuid = uuid.UUID("11111111-2222-3333-4444-555555555555").bytes
+        for kwargs, expected in (({}, 1), ({"device_type": 8}, 8)):
+            frame = codec.encode_join_session(
+                device_uuid=device_uuid,
+                friendly_name="Test Device",
+                session_uuid=session_uuid,
+                **kwargs,
+            )
+            decoded = codec.decode_frame(frame)
+            batch = codec.decode_qconnect_batch(decoded.payload)
+            assert batch.messages[0].rndrSrvrJoinSession.deviceInfo.type == expected
+
     def test_encode_join_session_with_quality(
         self, codec: ProtocolCodec, device_uuid: bytes
     ) -> None:

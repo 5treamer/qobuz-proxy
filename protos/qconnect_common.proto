@@ -21,12 +21,12 @@ enum PlayingState {
 enum DeviceType {
   DEVICE_TYPE_UNKNOWN     = 0;
   DEVICE_TYPE_SPEAKER    = 1;
-  DEVICE_TYPE_SPEAKERBOX  = 2; //FILLED?
+  DEVICE_TYPE_SPEAKERBOX  = 2; // DEVICE_TYPE_STREAMER in the Qobuz web player
   DEVICE_TYPE_TV          = 3; //DISPLAY?
-  DEVICE_TYPE_SPEAKERBOX2 = 4; 
-  DEVICE_TYPE_LAPTOP      = 5;
-  DEVICE_TYPE_PHONE       = 6;
-  DEVICE_TYPE_GOOGLE_CAST = 7;
+  DEVICE_TYPE_SPEAKERBOX2 = 4; // DEVICE_TYPE_SOUNDBAR in the Qobuz web player
+  DEVICE_TYPE_LAPTOP      = 5; // DEVICE_TYPE_COMPUTER in the Qobuz web player
+  DEVICE_TYPE_PHONE       = 6; // DEVICE_TYPE_MOBILE in the Qobuz web player
+  DEVICE_TYPE_GOOGLE_CAST = 7; // DEVICE_TYPE_CAST in the Qobuz web player
   DEVICE_TYPE_HEADPHONES  = 8;
   DEVICE_TYPE_TABLET      = 9;
 
