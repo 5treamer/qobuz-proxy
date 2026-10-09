@@ -1,0 +1,29 @@
+# Home Assistant add-on manifest for QobuzProxy.
+# `version` follows the QobuzProxy release in pyproject.toml. The "Home Assistant
+# add-on" workflow builds the image tagged with it. Home Assistant only offers
+# an update when this changes.
+name: Qobuz Proxy
+version: "1.7.6"
+slug: qobuz_proxy
+description: Turn any DLNA/UPnP player (moOde, Volumio, ...) into a Qobuz Connect device
+url: https://github.com/5treamer/qobuz-proxy
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+# Required: mDNS discovery by the Qobuz app and DLNA need the host network.
+host_network: true
+webui: "http://[HOST]:[PORT:8689]/"
+watchdog: "http://[HOST]:[PORT:8689]/api/status"
+ports:
+  8689/tcp: 8689
+  7120/tcp: 7120
+ports_description:
+  8689/tcp: Web UI and Qobuz Connect discovery
+  7120/tcp: Audio proxy for DLNA renderers
+image: ghcr.io/5treamer/qobuz-proxy-ha
+options:
+  log_level: info
+schema:
+  log_level: list(debug|info|warning|error)
