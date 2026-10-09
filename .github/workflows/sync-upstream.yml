@@ -1,6 +1,6 @@
 name: Sync upstream
 
-# Keeps this fork on the latest upstream QobuzProxy release:
+# Keeps this fork on the latest upstream QobuzProxy release (checked weekly):
 # 1. merges upstream main via GitHub's "sync fork" API,
 # 2. sets the add-on version in ha-addon/config.yaml to the version in
 #    pyproject.toml and adds a changelog entry,
@@ -11,7 +11,8 @@ name: Sync upstream
 
 on:
   schedule:
-    - cron: '23 5 * * *'
+    # Mondays 05:23 UTC
+    - cron: '23 5 * * 1'
   workflow_dispatch:
 
 permissions:

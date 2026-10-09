@@ -57,7 +57,7 @@ Then open `http://<host-ip>:8689`, log in to Qobuz and add your speakers.
 
 ## How updates work
 
-- **Sync upstream** (daily, `.github/workflows/sync-upstream.yml`) merges the
+- **Sync upstream** (weekly on Mondays, `.github/workflows/sync-upstream.yml`) merges the
   upstream `main` branch via GitHub's "Sync fork" API, sets the add-on
   `version` in `ha-addon/config.yaml` to the upstream version from
   `pyproject.toml`, adds a changelog entry and starts the image build.
@@ -102,4 +102,4 @@ One-time setup for this fork:
 | `ha-addon/Dockerfile`, `ha-addon/run.sh` | Add-on image and entry point           |
 | `ha-addon/README.md`, `ha-addon/DOCS.md`, `ha-addon/CHANGELOG.md` | Texts shown in the add-on store |
 | `.github/workflows/ha-addon.yml`      | Builds and pushes both images             |
-| `.github/workflows/sync-upstream.yml` | Daily upstream sync and version bump      |
+| `.github/workflows/sync-upstream.yml` | Weekly upstream sync and version bump     |
