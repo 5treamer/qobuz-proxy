@@ -37,8 +37,16 @@ jobs:
         id: meta
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "version=$(yq -r '.version' ha-addon/config.yaml)" >> "$GITHUB_OUTPUT"
-          echo "addon_image=$(yq -r '.image' ha-addon/config.yaml)" >> "$GITHUB_OUTPUT"
+          field() { sed -n "s/^$1: *\"\{0,1\}\([^\"]*\)\"\{0,1\} *$/\1/p" ha-addon/config.yaml; }
+          version=$(field version)
+          addon_image=$(field image)
+          echo "version=${version} addon_image=${addon_image}"
+          if [ -z "$version" ] || [ -z "$addon_image" ]; then
+            echo "::error::Could not read version/image from ha-addon/config.yaml"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "addon_image=${addon_image}" >> "$GITHUB_OUTPUT"
           echo "app_image=ghcr.io/${owner}/qobuz-proxy" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
