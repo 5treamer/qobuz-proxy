@@ -64,6 +64,10 @@ jobs:
         with:
           context: .
           push: true
+          # No build attestations: they would publish the GitHub event payload
+          # (actor, commit metadata) alongside the image.
+          provenance: false
+          sbom: false
           platforms: linux/amd64,linux/arm64
           build-args: |
             GIT_COMMIT=${{ github.sha }}
@@ -80,6 +84,8 @@ jobs:
           context: .
           file: ha-addon/Dockerfile
           push: true
+          provenance: false
+          sbom: false
           platforms: linux/amd64,linux/arm64
           build-args: |
             GIT_COMMIT=${{ github.sha }}
