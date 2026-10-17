@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.7.1
+
+- Web UI now opens inside Home Assistant (Ingress) and can be shown in the
+  sidebar ("Show in sidebar" on the add-on page).
+
 ## 1.7.7
 
 - Updated to upstream QobuzProxy 1.7.7.
