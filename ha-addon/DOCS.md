@@ -7,8 +7,12 @@ control from the official Qobuz app.
 ## Setup
 
 1. Start the add-on.
-2. Click **Open Web UI** (port 8689 on your Home Assistant host).
-3. Click **Log in to Qobuz** and sign in with your Qobuz account.
+2. Click **Open Web UI**. To get a sidebar entry, enable **Show in sidebar**
+   on the add-on page.
+3. Click **Log in to Qobuz** and sign in with your Qobuz account. The login
+   opens in a new tab on `http://<home-assistant-ip>:8689`, because Qobuz
+   cannot be shown inside Home Assistant; the panel switches to "connected"
+   once you are logged in.
 4. Click **+ Add Speaker**, pick a discovered DLNA device (or enter its IP) and save.
 5. In the Qobuz app, open the output picker and select the speaker by its name.
 
@@ -37,8 +41,9 @@ speaker in the web UI.
 - Ports 8689 (web UI + Qobuz Connect discovery) and 7120 (audio proxy for the
   speakers) must be free on the host. Additional speakers use the next ports
   (8690, 7121, ...).
-- Open the web UI via your host's IP, not through a reverse proxy path:
-  the Qobuz login redirects back to the address you opened it from.
+- The Qobuz login always runs on the direct port 8689, so do it from a
+  device in your home network (not remotely via Nabu Casa or a reverse proxy).
+  Everything else in the web UI works from anywhere through Home Assistant.
 
 ## Troubleshooting
 

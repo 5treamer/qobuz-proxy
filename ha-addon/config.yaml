@@ -3,7 +3,7 @@
 # workflow bumps it, and the "Home Assistant add-on" workflow builds the image
 # tagged with it. Home Assistant only offers an update when this changes.
 name: Qobuz Proxy
-version: "1.7.7"
+version: "1.7.7.1"
 slug: qobuz_proxy
 description: Turn any DLNA/UPnP player (moOde, Volumio, ...) into a Qobuz Connect device
 url: https://github.com/5treamer/qobuz-proxy
@@ -14,7 +14,12 @@ startup: application
 boot: auto
 # Required: mDNS discovery by the Qobuz app and DLNA need the host network.
 host_network: true
-webui: "http://[HOST]:[PORT:8689]/"
+# Web UI inside Home Assistant (sidebar panel). The Qobuz login opens in a
+# new tab on the direct port, since Qobuz cannot be shown in a frame.
+ingress: true
+ingress_port: 8689
+panel_icon: mdi:music-circle-outline
+panel_title: Qobuz Proxy
 watchdog: "http://[HOST]:[PORT:8689]/api/status"
 ports:
   8689/tcp: 8689
