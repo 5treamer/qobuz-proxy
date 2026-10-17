@@ -1,0 +1,55 @@
+name: Clean up old images
+
+# Two steps, both started by hand:
+# 1. Run with `delete_ids` empty: lists every GHCR version of both images and
+#    marks the ones that belong to the current `latest` image.
+# 2. Run with `delete_ids` set to a comma-separated list of version IDs taken
+#    from that listing: deletes exactly those versions. IDs that belong to
+#    `latest` are refused.
+
+on:
+  workflow_dispatch:
+    inputs:
+      delete_ids:
+        description: Comma-separated version IDs to delete (empty = list only)
+        required: false
+        default: ""
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    name: List or delete image versions
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DELETE_IDS: ${{ inputs.delete_ids }}
+    steps:
+      - name: List or delete
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          accept="application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json"
+          wanted=" $(tr ',' ' ' <<< "$DELETE_IDS") "
+          for pkg in qobuz-proxy qobuz-proxy-ha; do
+            token=$(curl -fsSL "https://ghcr.io/token?scope=repository:${owner}/${pkg}:pull" | jq -r .token)
+            index=$(curl -fsSL -D headers.txt -H "Authorization: Bearer ${token}" -H "Accept: ${accept}" \
+              "https://ghcr.io/v2/${owner}/${pkg}/manifests/latest")
+            keep=" $(grep -i '^docker-content-digest:' headers.txt | awk '{print $2}' | tr -d '\r') $(jq -r '.manifests[].digest' <<< "$index" | tr '\n' ' ') "
+            gh api --paginate "/users/${owner}/packages/container/${pkg}/versions" \
+              --jq '.[] | "\(.id) \(.name) \(.created_at) \(.metadata.container.tags | join(","))"' > versions.txt
+            while read -r id digest created tags; do
+              case "$keep" in *" ${digest} "*) part=LATEST ;; *) part=old ;; esac
+              case "$wanted" in
+                *" ${id} "*)
+                  if [ "$part" = LATEST ]; then
+                    echo "::error::refusing to delete ${pkg} ${id}: part of latest"
+                    exit 1
+                  fi
+                  echo "DELETE ${pkg} id=${id} ${digest} created=${created} tags=${tags}"
+                  gh api -X DELETE "/users/${owner}/packages/container/${pkg}/versions/${id}" ;;
+                *)
+                  echo "VERSION ${pkg} id=${id} ${part} ${digest} created=${created} tags=${tags:--}" ;;
+              esac
+            done < versions.txt
+          done
